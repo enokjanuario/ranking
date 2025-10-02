@@ -1,0 +1,72 @@
+╔══════════════════════════════════════════════════════════════════╗
+║          🏆 RANKING LOL - INSTALAÇÃO RÁPIDA 🏆                  ║
+╚══════════════════════════════════════════════════════════════════╝
+
+█ PASSO 1: INSTALAR DEPENDÊNCIAS
+  
+  npm install
+
+
+█ PASSO 2: CONFIGURAR API KEY
+
+  1. Acesse: https://developer.riotgames.com/
+  2. Faça login e copie sua API Key
+  3. Crie o arquivo .env.local na raiz do projeto
+  4. Adicione as seguintes linhas:
+
+     RIOT_API_KEY=sua-api-key-aqui
+     RIOT_REGION=br1
+     RIOT_ROUTING=americas
+
+
+█ PASSO 3: CONFIGURAR JOGADORES
+
+  1. Abra: lib/constants.ts
+  2. Edite a lista TRACKED_PLAYERS
+  3. Formato: 'NomeJogador#TAG'
+  4. Exemplo:
+     
+     export const TRACKED_PLAYERS = [
+       'Brtt#BR1',
+       'Kami#BR1',
+       'Robo#BR1',
+       // ... adicione 12 jogadores a mais
+     ]
+
+
+█ PASSO 4: INICIAR O SERVIDOR
+
+  npm run dev
+
+  Acesse: http://localhost:3000
+
+
+█ COMANDOS ÚTEIS:
+
+  npm run dev      - Iniciar em modo desenvolvimento
+  npm run build    - Criar build de produção
+  npm start        - Iniciar em modo produção
+  npm run lint     - Verificar erros de código
+
+
+█ DICAS:
+
+  ✓ Na primeira execução, aguarde alguns minutos
+  ✓ O ranking atualiza automaticamente a cada 5 minutos
+  ✓ Use o botão "Atualizar Agora" para forçar update
+  ✓ API Keys de dev expiram em 24h
+  ✓ Comece testando com 3-5 jogadores
+
+
+█ PRECISA DE AJUDA?
+
+  Leia os arquivos:
+  - README.md (documentação completa)
+  - SETUP.md (guia detalhado de configuração)
+  - PLAYERS_EXAMPLE.md (exemplos de jogadores)
+
+
+═══════════════════════════════════════════════════════════════════
+Desenvolvido com ❤️ para a comunidade de League of Legends
+═══════════════════════════════════════════════════════════════════
+
