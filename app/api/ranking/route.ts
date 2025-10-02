@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { TRACKED_PLAYERS } from '@/lib/constants'
 import { getAccountByRiotId, calculatePlayerStats, rankPlayers } from '@/lib/riotApi'
 
+// Force dynamic rendering for this API route
+export const dynamic = 'force-dynamic'
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams
