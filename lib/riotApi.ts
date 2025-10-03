@@ -9,8 +9,30 @@ const api = axios.create({
 })
 
 // Add delay between requests to respect rate limits
-// Increased delay to avoid rate limiting with Development API Key
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
+// Batch processing with rate limiting
+async function processBatch<T>(
+  items: string[],
+  batchSize: number,
+  processor: (item: string) => Promise<T>,
+  delayMs: number = 50
+): Promise<T[]> {
+  const results: T[] = []
+  
+  for (let i = 0; i < items.length; i += batchSize) {
+    const batch = items.slice(i, i + batchSize)
+    const batchPromises = batch.map(item => processor(item))
+    const batchResults = await Promise.all(batchPromises)
+    results.push(...batchResults)
+    
+    if (i + batchSize < items.length) {
+      await delay(delayMs)
+    }
+  }
+  
+  return results
+}
 
 export async function getAccountByRiotId(riotId: string) {
   try {
@@ -114,13 +136,18 @@ export async function calculatePlayerStats(
     let totalDuration = 0
     const championStats: ChampionStats = {}
 
-    // Process matches (limit to avoid too many API calls)
-    // Reduced to 15 matches to respect rate limits with Development API Key
-    const matchesToProcess = matchIds.slice(0, 15)
+    // Process matches in parallel batches for better performance
+    const matchesToProcess = matchIds
     
-    for (const matchId of matchesToProcess) {
-      const matchDetails = await getMatchDetails(matchId)
-      
+    // Process in batches of 10 for better performance
+    const matchDetailsBatch = await processBatch(
+      matchesToProcess,
+      10,
+      async (matchId) => getMatchDetails(matchId),
+      100
+    )
+    
+    for (const matchDetails of matchDetailsBatch) {
       if (!matchDetails) continue
 
       const participant = matchDetails.info.participants.find(p => p.puuid === puuid)
