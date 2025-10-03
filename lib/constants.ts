@@ -13,6 +13,14 @@ export const TRACKED_PLAYERS = [
   // 'MaisUm#BR1',
 ]
 
+// Mapeamento de RiotIDs para apelidos conhecidos
+export const PLAYER_NICKNAMES: Record<string, string> = {
+  'Atziluth#537': 'Bronziocre',
+  'Gordaker#prata': 'JB Sniper',
+  // Adicione mais apelidos aqui conforme necessário
+  // 'RiotID#TAG': 'Apelido',
+}
+
 // Riot API Configuration
 export const RIOT_API_CONFIG = {
   key: process.env.RIOT_API_KEY || '',

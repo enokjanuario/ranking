@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from 'react'
 import Header from '@/components/Header'
-import RankingList from '@/components/RankingList'
+import PlayerTable from '@/components/PlayerTable'
 import LoadingSpinner from '@/components/LoadingSpinner'
+import Footer from '@/components/Footer'
 import { PlayerStats } from '@/types'
 
 export default function Home() {
@@ -65,8 +66,28 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen bg-dark-bg">
-      <div className="container mx-auto px-4 py-8 max-w-7xl">
+    <main className="min-h-screen bg-dark-bg relative overflow-hidden">
+      {/* Left Side Image */}
+      <div 
+        className="fixed top-0 left-0 bottom-0 z-0 pointer-events-none"
+        style={{
+          width: 'calc((100vw - 1400px) / 2)',
+        }}
+      >
+        <img 
+          src="/lateral1.jpg" 
+          alt="Background" 
+          style={{ 
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            objectPosition: 'right center',
+            opacity: 0.25,
+          }}
+        />
+      </div>
+      
+      <div className="container mx-auto px-4 py-6 max-w-[1400px] relative z-10">
         <Header 
           selectedMonth={selectedMonth}
           onMonthChange={handleMonthChange}
@@ -77,15 +98,10 @@ export default function Home() {
         {loading ? (
           <LoadingSpinner />
         ) : (
-          <RankingList players={players} />
+          <PlayerTable players={players} />
         )}
-      </div>
 
-      {/* Background decorative elements */}
-      <div className="fixed top-0 left-0 w-full h-full pointer-events-none overflow-hidden -z-10">
-        <div className="absolute top-20 left-10 w-64 h-64 bg-neon-purple opacity-10 rounded-full blur-3xl"></div>
-        <div className="absolute bottom-20 right-10 w-96 h-96 bg-neon-blue opacity-10 rounded-full blur-3xl"></div>
-        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-neon-pink opacity-5 rounded-full blur-3xl"></div>
+        <Footer />
       </div>
     </main>
   )
