@@ -154,7 +154,7 @@ export default function PlayerTable({ players }: PlayerTableProps) {
                   </button>
                 </th>
                 <th className="px-4 py-4 text-left">
-                  <span className="text-gray-300 font-semibold">Campeão Principal</span>
+                  <span className="text-gray-300 font-semibold">Campeões Mais Jogados</span>
                 </th>
                 <th className="px-4 py-4 text-center">
                   <button
@@ -164,6 +164,9 @@ export default function PlayerTable({ players }: PlayerTableProps) {
                     Partidas
                     <SortIcon field="totalGames" />
                   </button>
+                </th>
+                <th className="px-4 py-4 text-center">
+                  <span className="text-gray-300 font-semibold">LP Ganhos</span>
                 </th>
                 <th className="px-4 py-4 text-center">
                   <button
@@ -248,28 +251,34 @@ export default function PlayerTable({ players }: PlayerTableProps) {
                     </div>
                   </td>
 
-                  {/* Champion */}
+                  {/* Top 3 Champions */}
                   <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <div className="relative w-9 h-9 rounded-lg overflow-hidden border border-gray-700 flex-shrink-0 group-hover:border-gray-600 transition-colors">
-                        {player.mostPlayedChampion.icon ? (
-                          <Image
-                            src={player.mostPlayedChampion.icon}
-                            alt={player.mostPlayedChampion.name}
-                            width={36}
-                            height={36}
-                            className="object-cover"
-                          />
-                        ) : (
-                          <div className="w-full h-full bg-gray-800 flex items-center justify-center">
-                            <span className="text-xs">?</span>
+                    <div className="flex items-center gap-1">
+                      {player.topChampions && player.topChampions.length > 0 ? (
+                        player.topChampions.map((champ, champIdx) => (
+                          <div 
+                            key={champIdx}
+                            className="relative group/champ"
+                            title={`${champ.name} - ${champ.games} jogos`}
+                          >
+                            <div className="relative w-10 h-10 rounded-lg overflow-hidden border-2 border-gray-700 group-hover/champ:border-neon-blue transition-colors">
+                              <Image
+                                src={champ.icon}
+                                alt={champ.name}
+                                width={40}
+                                height={40}
+                                className="object-cover"
+                              />
+                              {/* Game count badge */}
+                              <div className="absolute bottom-0 right-0 bg-black/80 text-white text-[10px] px-1 rounded-tl">
+                                {champ.games}
+                              </div>
+                            </div>
                           </div>
-                        )}
-                      </div>
-                      <div>
-                        <div className="text-white font-medium text-sm">{player.mostPlayedChampion.name}</div>
-                        <div className="text-gray-500 text-xs">{player.mostPlayedChampion.games} jogos</div>
-                      </div>
+                        ))
+                      ) : (
+                        <div className="text-gray-500 text-sm">Sem dados</div>
+                      )}
                     </div>
                   </td>
 
@@ -277,6 +286,34 @@ export default function PlayerTable({ players }: PlayerTableProps) {
                   <td className="px-4 py-3 text-center">
                     <div className="font-semibold text-white text-sm">{player.totalGames}</div>
                     <div className="text-gray-500 text-xs">{player.wins}V / {player.losses}D</div>
+                  </td>
+
+                  {/* LP Change */}
+                  <td className="px-4 py-3 text-center">
+                    <div className="flex items-center justify-center gap-1">
+                      {player.lpChange > 0 ? (
+                        <>
+                          <span className="text-green-400 text-lg">↑</span>
+                          <span className="font-bold text-green-400 text-base">
+                            {player.lpChange} LP
+                          </span>
+                        </>
+                      ) : player.lpChange < 0 ? (
+                        <>
+                          <span className="text-red-400 text-lg">↓</span>
+                          <span className="font-bold text-red-400 text-base">
+                            {Math.abs(player.lpChange)} LP
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-white text-lg">-</span>
+                          <span className="font-semibold text-gray-400 text-base">
+                            0 LP
+                          </span>
+                        </>
+                      )}
+                    </div>
                   </td>
 
                   {/* Win Rate */}

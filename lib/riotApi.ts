@@ -117,6 +117,7 @@ export async function calculatePlayerStats(
         totalGames: 0,
         wins: 0,
         losses: 0,
+        lpChange: 0,
         kda: 0,
         avgCS: 0,
         avgGameDuration: 0,
@@ -125,10 +126,12 @@ export async function calculatePlayerStats(
           icon: '',
           games: 0,
         },
+        topChampions: [],
       }
     }
 
     let wins = 0
+    let totalGames = 0  // Moved here to count only processed matches
     let totalKills = 0
     let totalDeaths = 0
     let totalAssists = 0
@@ -150,10 +153,21 @@ export async function calculatePlayerStats(
     for (const matchDetails of matchDetailsBatch) {
       if (!matchDetails) continue
 
+      // Filter: Only count Ranked games
+      // Queue IDs: 420 (Ranked Solo/Duo), 440 (Ranked Flex)
+      const queueId = matchDetails.info.queueId
+      const validQueues = [420, 440] // Ranked Solo and Ranked Flex
+      
+      // Skip if queueId is missing or not in valid queues
+      if (!queueId || !validQueues.includes(queueId)) continue
+
       const participant = matchDetails.info.participants.find(p => p.puuid === puuid)
       
       if (!participant) continue
 
+      // Count only successfully processed matches
+      totalGames++
+      
       if (participant.win) wins++
       
       totalKills += participant.kills
@@ -171,12 +185,15 @@ export async function calculatePlayerStats(
       if (participant.win) championStats[champName].wins++
     }
 
-    const totalGames = matchesToProcess.length
+    // totalGames is now counted correctly above
     const losses = totalGames - wins
     const winRate = totalGames > 0 ? (wins / totalGames) * 100 : 0
     const kda = totalDeaths > 0 ? (totalKills + totalAssists) / totalDeaths : totalKills + totalAssists
     const avgCS = totalGames > 0 ? totalCS / totalGames : 0
     const avgGameDuration = totalGames > 0 ? totalDuration / totalGames / 60 : 0
+    
+    // Calculate estimated LP change (average: +20 per win, -20 per loss)
+    const lpChange = (wins * 20) - (losses * 20)
 
     // Find most played champion
     let mostPlayedChampion = {
@@ -185,14 +202,19 @@ export async function calculatePlayerStats(
       games: 0,
     }
 
-    for (const [champName, stats] of Object.entries(championStats)) {
-      if (stats.games > mostPlayedChampion.games) {
-        mostPlayedChampion = {
-          name: champName,
-          icon: `https://ddragon.leagueoflegends.com/cdn/${DDRAGON_VERSION}/img/champion/${champName}.png`,
-          games: stats.games,
-        }
-      }
+    // Get top 3 most played champions
+    const sortedChampions = Object.entries(championStats)
+      .sort(([, a], [, b]) => b.games - a.games)
+      .slice(0, 3)
+      .map(([champName, stats]) => ({
+        name: champName,
+        icon: `https://ddragon.leagueoflegends.com/cdn/${DDRAGON_VERSION}/img/champion/${champName}.png`,
+        games: stats.games,
+      }))
+
+    // Keep mostPlayedChampion for backward compatibility
+    if (sortedChampions.length > 0) {
+      mostPlayedChampion = sortedChampions[0]
     }
 
     return {
@@ -203,10 +225,12 @@ export async function calculatePlayerStats(
       totalGames,
       wins,
       losses,
+      lpChange,
       kda: parseFloat(kda.toFixed(2)),
       avgCS: parseFloat(avgCS.toFixed(1)),
       avgGameDuration: parseFloat(avgGameDuration.toFixed(2)),
       mostPlayedChampion,
+      topChampions: sortedChampions,
     }
   } catch (error) {
     console.error(`Error calculating stats for ${riotId}:`, error)
