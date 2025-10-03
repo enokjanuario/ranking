@@ -37,6 +37,9 @@ export const RIOT_API_ENDPOINTS = {
     `https://${routing}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/${gameName}/${tagLine}`,
   summonerByPuuid: (puuid: string, region: string) => 
     `https://${region}.api.riotgames.com/lol/summoner/v4/summoners/by-puuid/${puuid}`,
+  // Get league entries directly by PUUID (correct endpoint!)
+  leagueEntriesByPuuid: (puuid: string, region: string) =>
+    `https://${region}.api.riotgames.com/lol/league/v4/entries/by-puuid/${puuid}`,
   matchListByPuuid: (puuid: string, routing: string, start: number, count: number) => 
     `https://${routing}.api.riotgames.com/lol/match/v5/matches/by-puuid/${puuid}/ids?start=${start}&count=${count}`,
   matchById: (matchId: string, routing: string) => 

@@ -76,6 +76,23 @@ export default function PlayerTable({ players }: PlayerTableProps) {
     return 'text-gray-400'
   }
 
+  const getRankImage = (tier?: string) => {
+    if (!tier) return null
+    switch (tier.toUpperCase()) {
+      case 'IRON': return '/silver.webp' // Fallback to silver (iron não existe)
+      case 'BRONZE': return '/bronze.webp'
+      case 'SILVER': return '/silver.webp'
+      case 'GOLD': return '/gold.webp'
+      case 'PLATINUM': return '/platinum.webp'
+      case 'EMERALD': return '/emerald.webp'
+      case 'DIAMOND': return '/diamond.webp'
+      case 'MASTER': return '/master.webp'
+      case 'GRANDMASTER': return '/master.webp' // Fallback to master
+      case 'CHALLENGER': return '/challenger.webp'
+      default: return null
+    }
+  }
+
   if (players.length === 0) {
     return (
       <div className="text-center py-20">
@@ -152,6 +169,9 @@ export default function PlayerTable({ players }: PlayerTableProps) {
                     Jogador
                     <SortIcon field="summonerName" />
                   </button>
+                </th>
+                <th className="px-4 py-4 text-center">
+                  <span className="text-gray-300 font-semibold">Elo</span>
                 </th>
                 <th className="px-4 py-4 text-left">
                   <span className="text-gray-300 font-semibold">Campeões Mais Jogados</span>
@@ -249,6 +269,39 @@ export default function PlayerTable({ players }: PlayerTableProps) {
                         </>
                       )}
                     </div>
+                  </td>
+
+                  {/* Current Rank */}
+                  <td className="px-4 py-3">
+                    {player.currentRank ? (
+                      <div className="flex flex-col items-center gap-2">
+                        {getRankImage(player.currentRank.tier) ? (
+                          <div className="relative group/rank">
+                            <Image
+                              src={getRankImage(player.currentRank.tier)!}
+                              alt={`${player.currentRank.tier} ${player.currentRank.rank}`}
+                              width={64}
+                              height={64}
+                              className="object-contain drop-shadow-lg"
+                            />
+                            <div className="absolute inset-0 flex items-center justify-center">
+                              <span className="font-bold text-white text-xs drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
+                                {player.currentRank.rank}
+                              </span>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-gray-400 text-sm">
+                            {player.currentRank.tier} {player.currentRank.rank}
+                          </div>
+                        )}
+                        <div className="text-xs font-bold text-white drop-shadow">
+                          {player.currentRank.lp} LP
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-gray-500 text-sm">Unranked</div>
+                    )}
                   </td>
 
                   {/* Top 3 Champions */}

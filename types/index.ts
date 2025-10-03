@@ -11,6 +11,11 @@ export interface PlayerStats {
   avgCS: number // average creep score per game
   avgGameDuration: number // in minutes
   lpChange: number // LP gained/lost in the period (estimated)
+  currentRank?: {
+    tier: string // IRON, BRONZE, SILVER, GOLD, PLATINUM, DIAMOND, MASTER, GRANDMASTER, CHALLENGER
+    rank: string // I, II, III, IV
+    lp: number
+  }
   mostPlayedChampion: {
     name: string
     icon: string

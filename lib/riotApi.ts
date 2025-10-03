@@ -48,6 +48,34 @@ export async function getAccountByRiotId(riotId: string) {
   }
 }
 
+export async function getCurrentRankByPuuid(puuid: string) {
+  try {
+    // Use the correct endpoint: GET /lol/league/v4/entries/by-puuid/{encryptedPUUID}
+    const leagueUrl = RIOT_API_ENDPOINTS.leagueEntriesByPuuid(puuid, RIOT_API_CONFIG.region)
+    
+    await delay(100)
+    const leagueResponse = await api.get(leagueUrl)
+    
+    // Find ranked solo/duo queue
+    const rankedData = leagueResponse.data.find((queue: any) => queue.queueType === 'RANKED_SOLO_5x5')
+    
+    if (rankedData) {
+      console.log('✅ Rank found:', rankedData.tier, rankedData.rank, rankedData.leaguePoints, 'LP')
+      return {
+        tier: rankedData.tier,
+        rank: rankedData.rank,
+        lp: rankedData.leaguePoints,
+      }
+    }
+    
+    console.log('⚠️ No ranked solo/duo data found for this player')
+    return null
+  } catch (error: any) {
+    console.error(`❌ Error fetching rank:`, error.response?.data || error.message)
+    return null
+  }
+}
+
 export async function getMatchHistory(puuid: string, startTime?: number, endTime?: number) {
   try {
     let start = 0
@@ -105,6 +133,10 @@ export async function calculatePlayerStats(
   endTime: number
 ): Promise<Omit<PlayerStats, 'position' | 'previousPosition'> | null> {
   try {
+    // Get current rank using the correct endpoint
+    console.log(`\n=== Fetching stats for ${riotId} ===`)
+    const currentRank = await getCurrentRankByPuuid(puuid)
+    
     // Get match history for the period
     const matchIds = await getMatchHistory(puuid, startTime, endTime)
     
@@ -118,6 +150,7 @@ export async function calculatePlayerStats(
         wins: 0,
         losses: 0,
         lpChange: 0,
+        currentRank: currentRank || undefined,
         kda: 0,
         avgCS: 0,
         avgGameDuration: 0,
@@ -226,6 +259,7 @@ export async function calculatePlayerStats(
       wins,
       losses,
       lpChange,
+      currentRank: currentRank || undefined,
       kda: parseFloat(kda.toFixed(2)),
       avgCS: parseFloat(avgCS.toFixed(1)),
       avgGameDuration: parseFloat(avgGameDuration.toFixed(2)),
