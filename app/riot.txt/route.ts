@@ -1,5 +1,5 @@
 export async function GET() {
-  const content = '7b10184e-f5fd-40d0-a708-bd1c2ffa6ca5'
+  const content = '7de1096e-d9c2-49b1-8a1d-272c06244ba6'
   
   return new Response(content, {
     status: 200,
