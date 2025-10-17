@@ -32,6 +32,12 @@ const CACHE_FILE_PATH = path.join(process.cwd(), '.cache', 'ranking-cache.json')
 
 // Inicializar cache do arquivo (se existir)
 export async function initCache() {
+  // Skip file loading in serverless environment
+  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
+    console.log('📦 Cache em memoria inicializado (ambiente serverless)')
+    return
+  }
+  
   try {
     const data = await fs.readFile(CACHE_FILE_PATH, 'utf-8')
     cache = JSON.parse(data)
@@ -42,7 +48,14 @@ export async function initCache() {
 }
 
 // Salvar cache em arquivo (para persistência)
+// Desabilitado em ambiente serverless (Vercel)
 async function saveCache() {
+  // Skip file saving in serverless environment
+  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
+    console.log('⏭️  Cache em arquivo desabilitado em ambiente serverless')
+    return
+  }
+  
   try {
     await fs.mkdir(path.dirname(CACHE_FILE_PATH), { recursive: true })
     await fs.writeFile(CACHE_FILE_PATH, JSON.stringify(cache, null, 2))

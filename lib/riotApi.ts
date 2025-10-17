@@ -39,7 +39,7 @@ export async function getAccountByRiotId(riotId: string) {
     const [gameName, tagLine] = riotId.split('#')
     const url = RIOT_API_ENDPOINTS.accountByRiotId(gameName, tagLine, RIOT_API_CONFIG.routing)
     
-    await delay(100) // Rate limit: 20 req/s
+    await delay(200) // Rate limit: 20 req/s - increased for safety
     const response = await api.get(url)
     return response.data
   } catch (error: any) {
@@ -175,12 +175,13 @@ export async function calculatePlayerStats(
     // Process matches in parallel batches for better performance
     const matchesToProcess = matchIds
     
-    // Process in batches of 5 for rate limiting (20 req/s limit)
+    // Process in batches of 3 for rate limiting (20 req/s limit)
+    // 3 req / 500ms = 6 req/s (safe margin)
     const matchDetailsBatch = await processBatch(
       matchesToProcess,
-      5,
+      3,
       async (matchId) => getMatchDetails(matchId),
-      300
+      500
     )
     
     for (const matchDetails of matchDetailsBatch) {
