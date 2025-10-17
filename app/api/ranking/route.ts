@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { TRACKED_PLAYERS } from '@/lib/constants'
 import { getAccountByRiotId, calculatePlayerStats, rankPlayers } from '@/lib/riotApi'
-import { getCache, setCache, initCache } from '@/lib/cache'
+import { getCache, setCache, initCache, acquireUpdateLock, releaseUpdateLock, isUpdateInProgress, waitForUpdate } from '@/lib/cache'
 
 // Force dynamic rendering for this API route
 export const dynamic = 'force-dynamic'
@@ -83,19 +83,67 @@ export async function GET(request: NextRequest) {
       console.log(`🔄 Forçando atualização para ${monthParam}`)
     }
 
-    // Se não houver cache válido, buscar dados frescos
-    const rankedPlayers = await fetchFreshData(monthParam, startTime, endTime)
+    // Verificar se já há uma atualização em progresso
+    if (isUpdateInProgress(monthParam)) {
+      console.log(`⏸️  Atualização já em progresso para ${monthParam}, aguardando...`)
+      
+      // Aguardar a atualização em progresso terminar
+      await waitForUpdate(monthParam)
+      
+      // Tentar pegar do cache novamente
+      const cachedData = getCache(monthParam)
+      if (cachedData) {
+        return NextResponse.json({
+          success: true,
+          players: cachedData.players,
+          period: cachedData.period,
+          cached: true,
+          cachedAt: new Date(cachedData.timestamp).toISOString(),
+          waitedForUpdate: true,
+        })
+      }
+    }
 
-    // Salvar no cache
-    await setCache(monthParam, rankedPlayers, period)
+    // Tentar adquirir lock para atualização
+    if (!acquireUpdateLock(monthParam)) {
+      // Se não conseguir lock, retornar cache (mesmo expirado) ou erro
+      const cachedData = getCache(monthParam)
+      if (cachedData) {
+        return NextResponse.json({
+          success: true,
+          players: cachedData.players,
+          period: cachedData.period,
+          cached: true,
+          stale: true,
+          cachedAt: new Date(cachedData.timestamp).toISOString(),
+        })
+      }
+      
+      return NextResponse.json(
+        { success: false, error: 'Update in progress, please try again' },
+        { status: 503 }
+      )
+    }
 
-    return NextResponse.json({
-      success: true,
-      players: rankedPlayers,
-      period,
-      cached: false,
-      updatedAt: new Date().toISOString(),
-    })
+    try {
+      // Se não houver cache válido, buscar dados frescos
+      console.log(`🚀 Iniciando busca de dados para ${monthParam}`)
+      const rankedPlayers = await fetchFreshData(monthParam, startTime, endTime)
+
+      // Salvar no cache
+      await setCache(monthParam, rankedPlayers, period)
+
+      return NextResponse.json({
+        success: true,
+        players: rankedPlayers,
+        period,
+        cached: false,
+        updatedAt: new Date().toISOString(),
+      })
+    } finally {
+      // Sempre liberar o lock, mesmo se houver erro
+      releaseUpdateLock(monthParam)
+    }
   } catch (error: any) {
     console.error('Error in ranking API:', error)
     return NextResponse.json(

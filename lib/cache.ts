@@ -23,6 +23,10 @@ let cache: CacheStore = {}
 // Duração do cache em milissegundos (15 minutos)
 const CACHE_DURATION = 15 * 60 * 1000
 
+// Mutex para controlar atualizações concorrentes
+let updateInProgress: string | null = null
+const updateQueue: Map<string, Promise<any>> = new Map()
+
 // Caminho para o arquivo de cache (opcional, para persistência entre restarts)
 const CACHE_FILE_PATH = path.join(process.cwd(), '.cache', 'ranking-cache.json')
 
@@ -138,5 +142,39 @@ export async function clearAllCache(): Promise<void> {
   cache = {}
   await saveCache()
   console.log('🗑️  Todo o cache foi limpo')
+}
+
+// Verificar se uma atualização está em progresso
+export function isUpdateInProgress(month: string): boolean {
+  return updateInProgress === month || updateQueue.has(month)
+}
+
+// Adquirir lock para atualização (retorna false se já houver update em progresso)
+export function acquireUpdateLock(month: string): boolean {
+  if (updateInProgress === month || updateQueue.has(month)) {
+    console.log(`⏸️  Atualização para ${month} já em progresso, aguardando...`)
+    return false
+  }
+  
+  updateInProgress = month
+  console.log(`🔒 Lock adquirido para ${month}`)
+  return true
+}
+
+// Liberar lock de atualização
+export function releaseUpdateLock(month: string): void {
+  if (updateInProgress === month) {
+    updateInProgress = null
+    updateQueue.delete(month)
+    console.log(`🔓 Lock liberado para ${month}`)
+  }
+}
+
+// Aguardar se houver atualização em progresso
+export async function waitForUpdate(month: string): Promise<void> {
+  if (updateQueue.has(month)) {
+    console.log(`⏳ Aguardando atualização em progresso para ${month}...`)
+    await updateQueue.get(month)
+  }
 }
 
