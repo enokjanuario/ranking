@@ -1,6 +1,8 @@
 import axios from 'axios'
 import { RIOT_API_CONFIG, RIOT_API_ENDPOINTS, DDRAGON_VERSION } from './constants'
 import { RiotMatchDetails, PlayerStats, ChampionStats } from '@/types'
+import { calculateLPChange, rankToAbsoluteLP } from './lpCalculator'
+import { saveRankSnapshot, getRankSnapshot } from './rankSnapshot'
 
 const api = axios.create({
   headers: {
@@ -69,10 +71,10 @@ export async function getCurrentRankByPuuid(puuid: string) {
     }
     
     console.log('⚠️ No ranked solo/duo data found for this player')
-    return null
+    return undefined
   } catch (error: any) {
     console.error(`❌ Error fetching rank:`, error.response?.data || error.message)
-    return null
+    return undefined
   }
 }
 
@@ -226,8 +228,25 @@ export async function calculatePlayerStats(
     const avgCS = totalGames > 0 ? totalCS / totalGames : 0
     const avgGameDuration = totalGames > 0 ? totalDuration / totalGames / 60 : 0
     
-    // Calculate estimated LP change (average: +20 per win, -20 per loss)
-    const lpChange = (wins * 20) - (losses * 20)
+    // Calculate REAL LP change using rank snapshots
+    const monthStr = `${new Date(startTime).getFullYear()}-${String(new Date(startTime).getMonth() + 1).padStart(2, '0')}`
+    
+    // Buscar snapshot do início do período
+    let previousRank = getRankSnapshot(puuid, monthStr)
+    
+    // Se não houver snapshot, salvar o rank atual como baseline
+    if (!previousRank && currentRank) {
+      saveRankSnapshot(puuid, monthStr, currentRank)
+      previousRank = currentRank
+    }
+    
+    // Calcular mudança real de LP
+    const lpChange = calculateLPChange(currentRank, previousRank)
+    
+    // Log para debug
+    if (previousRank && currentRank) {
+      console.log(`📊 LP Change para ${riotId}: ${previousRank.tier} ${previousRank.rank} ${previousRank.lp}LP → ${currentRank.tier} ${currentRank.rank} ${currentRank.lp}LP = ${lpChange > 0 ? '+' : ''}${lpChange} LP`)
+    }
 
     // Find most played champion
     let mostPlayedChampion = {
