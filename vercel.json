@@ -1,0 +1,10 @@
+{
+  "rewrites": [
+    {
+      "source": "//riot.txt",
+      "destination": "/riot.txt"
+    }
+  ],
+  "trailingSlash": false
+}
+
