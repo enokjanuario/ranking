@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { TRACKED_PLAYERS } from '@/lib/constants'
 import { getAccountByRiotId, calculatePlayerStats, rankPlayers } from '@/lib/riotApi'
-import { getCache, setCache, initCache, acquireUpdateLock, releaseUpdateLock, isUpdateInProgress, waitForUpdate } from '@/lib/cache'
+import { getCache, setCache, initCache, acquireUpdateLock, releaseUpdateLock, isUpdateInProgress, waitForUpdate } from '@/lib/cache-redis'
 
 // Force dynamic rendering for this API route
 export const dynamic = 'force-dynamic'
@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
 
     // Verificar cache primeiro (a menos que forceRefresh seja true)
     if (!forceRefresh) {
-      const cachedData = getCache(monthParam)
+      const cachedData = await getCache(monthParam)
       
       if (cachedData) {
         console.log(`✅ Retornando dados do cache para ${monthParam}`)
@@ -84,14 +84,14 @@ export async function GET(request: NextRequest) {
     }
 
     // Verificar se já há uma atualização em progresso
-    if (isUpdateInProgress(monthParam)) {
+    if (await isUpdateInProgress(monthParam)) {
       console.log(`⏸️  Atualização já em progresso para ${monthParam}, aguardando...`)
       
       // Aguardar a atualização em progresso terminar
       await waitForUpdate(monthParam)
       
       // Tentar pegar do cache novamente
-      const cachedData = getCache(monthParam)
+      const cachedData = await getCache(monthParam)
       if (cachedData) {
         return NextResponse.json({
           success: true,
@@ -105,9 +105,9 @@ export async function GET(request: NextRequest) {
     }
 
     // Tentar adquirir lock para atualização
-    if (!acquireUpdateLock(monthParam)) {
+    if (!(await acquireUpdateLock(monthParam))) {
       // Se não conseguir lock, retornar cache (mesmo expirado) ou erro
-      const cachedData = getCache(monthParam)
+      const cachedData = await getCache(monthParam)
       if (cachedData) {
         return NextResponse.json({
           success: true,
@@ -142,7 +142,7 @@ export async function GET(request: NextRequest) {
       })
     } finally {
       // Sempre liberar o lock, mesmo se houver erro
-      releaseUpdateLock(monthParam)
+      await releaseUpdateLock(monthParam)
     }
   } catch (error: any) {
     console.error('Error in ranking API:', error)

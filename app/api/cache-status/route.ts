@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getCacheStatus } from '@/lib/cache'
+import { getCacheStatus } from '@/lib/cache-redis'
 
 // Force dynamic rendering for this API route
 export const dynamic = 'force-dynamic'
