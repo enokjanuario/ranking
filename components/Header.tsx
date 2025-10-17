@@ -7,12 +7,15 @@ import { ptBR } from '@/lib/locales'
 interface HeaderProps {
   selectedMonth: string
   onMonthChange: (month: string) => void
-  onRefresh: () => void
   lastUpdate: Date
+  isCached?: boolean
+  dataTimestamp?: Date | null
+  nextUpdateIn?: number // segundos até próxima atualização
 }
 
-export default function Header({ selectedMonth, onMonthChange, onRefresh, lastUpdate }: HeaderProps) {
+export default function Header({ selectedMonth, onMonthChange, lastUpdate, isCached, dataTimestamp, nextUpdateIn }: HeaderProps) {
   const [months, setMonths] = useState<{ value: string; label: string }[]>([])
+  const [countdown, setCountdown] = useState<string>('')
 
   useEffect(() => {
     // Generate list of available months (last 12 months)
@@ -28,6 +31,37 @@ export default function Header({ selectedMonth, onMonthChange, onRefresh, lastUp
     
     setMonths(monthList)
   }, [])
+
+  // Atualizar contador a cada segundo
+  useEffect(() => {
+    if (!nextUpdateIn || nextUpdateIn <= 0) {
+      setCountdown('')
+      return
+    }
+
+    const updateCountdown = () => {
+      const seconds = Math.max(0, Math.floor(nextUpdateIn - (Date.now() - lastUpdate.getTime()) / 1000))
+      
+      if (seconds <= 0) {
+        setCountdown('Atualizando...')
+        return
+      }
+
+      const minutes = Math.floor(seconds / 60)
+      const remainingSeconds = seconds % 60
+      
+      if (minutes > 0) {
+        setCountdown(`${minutes}min ${remainingSeconds}s`)
+      } else {
+        setCountdown(`${remainingSeconds}s`)
+      }
+    }
+
+    updateCountdown()
+    const interval = setInterval(updateCountdown, 1000)
+
+    return () => clearInterval(interval)
+  }, [nextUpdateIn, lastUpdate])
 
   return (
     <header className="mb-8">
@@ -64,18 +98,28 @@ export default function Header({ selectedMonth, onMonthChange, onRefresh, lastUp
             </select>
           </div>
 
-          {/* Last Update */}
-          <div className="text-gray-500 text-xs whitespace-nowrap" suppressHydrationWarning>
-            Atualizado: {format(lastUpdate, "HH:mm:ss")}
+          {/* Status Info */}
+          <div className="flex flex-col items-end gap-1 min-w-[200px]">
+            <div className="text-gray-500 text-xs whitespace-nowrap" suppressHydrationWarning>
+              {dataTimestamp ? (
+                <>
+                  {isCached ? 'Cache' : 'Atualizado'}: {format(dataTimestamp, "HH:mm:ss")}
+                </>
+              ) : (
+                <>Visualizado: {format(lastUpdate, "HH:mm:ss")}</>
+              )}
+            </div>
+            {isCached && countdown && (
+              <div className="text-green-400 text-xs whitespace-nowrap">
+                Proxima atualizacao: {countdown}
+              </div>
+            )}
+            {isCached && !countdown && (
+              <div className="text-green-400 text-xs whitespace-nowrap">
+                Atualiza automaticamente a cada 15min
+              </div>
+            )}
           </div>
-
-          {/* Refresh Button */}
-          <button
-            onClick={onRefresh}
-            className="bg-neon-blue/10 hover:bg-neon-blue/20 text-neon-blue border border-neon-blue/30 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 hover:border-neon-blue/50"
-          >
-            ↻ Atualizar
-          </button>
         </div>
       </div>
     </header>

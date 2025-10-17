@@ -12,7 +12,7 @@ export default function Footer() {
           <div className="flex items-center gap-4">
             <span>Powered by Riot API</span>
             <span className="text-gray-700">|</span>
-            <span className="text-gray-400">League of Legends Player Scouting</span>
+            <span className="text-gray-400">League of Legends YoJornada</span>
           </div>
         </div>
       </div>

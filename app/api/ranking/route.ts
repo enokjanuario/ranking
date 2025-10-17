@@ -1,14 +1,53 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { TRACKED_PLAYERS } from '@/lib/constants'
 import { getAccountByRiotId, calculatePlayerStats, rankPlayers } from '@/lib/riotApi'
+import { getCache, setCache, initCache } from '@/lib/cache'
 
 // Force dynamic rendering for this API route
 export const dynamic = 'force-dynamic'
+
+// Inicializar cache ao carregar o módulo
+initCache()
+
+// Função para buscar dados frescos da API
+async function fetchFreshData(monthParam: string, startTime: number, endTime: number) {
+  console.log(`🔄 Buscando dados frescos para ${monthParam}...`)
+  
+  // Fetch data for all tracked players
+  const playerPromises = TRACKED_PLAYERS.map(async (riotId) => {
+    try {
+      // Get account info
+      const account = await getAccountByRiotId(riotId)
+      
+      if (!account) {
+        console.log(`Account not found for ${riotId}`)
+        return null
+      }
+
+      // Calculate stats
+      const stats = await calculatePlayerStats(riotId, account.puuid, startTime, endTime)
+      
+      return stats
+    } catch (error) {
+      console.error(`Error processing player ${riotId}:`, error)
+      return null
+    }
+  })
+
+  const playerResults = await Promise.all(playerPromises)
+  const validPlayers = playerResults.filter(p => p !== null)
+
+  // Rank players
+  const rankedPlayers = rankPlayers(validPlayers as any)
+  
+  return rankedPlayers
+}
 
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams
     const monthParam = searchParams.get('month')
+    const forceRefresh = searchParams.get('force') === 'true' // Parâmetro para forçar atualização
 
     if (!monthParam) {
       return NextResponse.json({ success: false, error: 'Month parameter is required' }, { status: 400 })
@@ -21,40 +60,41 @@ export async function GET(request: NextRequest) {
     const startTime = new Date(year, month - 1, 1).getTime()
     const endTime = new Date(year, month, 0, 23, 59, 59, 999).getTime()
 
-    // Fetch data for all tracked players
-    const playerPromises = TRACKED_PLAYERS.map(async (riotId) => {
-      try {
-        // Get account info
-        const account = await getAccountByRiotId(riotId)
-        
-        if (!account) {
-          console.log(`Account not found for ${riotId}`)
-          return null
-        }
+    const period = {
+      start: new Date(startTime).toISOString(),
+      end: new Date(endTime).toISOString(),
+    }
 
-        // Calculate stats
-        const stats = await calculatePlayerStats(riotId, account.puuid, startTime, endTime)
-        
-        return stats
-      } catch (error) {
-        console.error(`Error processing player ${riotId}:`, error)
-        return null
+    // Verificar cache primeiro (a menos que forceRefresh seja true)
+    if (!forceRefresh) {
+      const cachedData = getCache(monthParam)
+      
+      if (cachedData) {
+        console.log(`✅ Retornando dados do cache para ${monthParam}`)
+        return NextResponse.json({
+          success: true,
+          players: cachedData.players,
+          period: cachedData.period,
+          cached: true,
+          cachedAt: new Date(cachedData.timestamp).toISOString(),
+        })
       }
-    })
+    } else {
+      console.log(`🔄 Forçando atualização para ${monthParam}`)
+    }
 
-    const playerResults = await Promise.all(playerPromises)
-    const validPlayers = playerResults.filter(p => p !== null)
+    // Se não houver cache válido, buscar dados frescos
+    const rankedPlayers = await fetchFreshData(monthParam, startTime, endTime)
 
-    // Rank players
-    const rankedPlayers = rankPlayers(validPlayers as any)
+    // Salvar no cache
+    await setCache(monthParam, rankedPlayers, period)
 
     return NextResponse.json({
       success: true,
       players: rankedPlayers,
-      period: {
-        start: new Date(startTime).toISOString(),
-        end: new Date(endTime).toISOString(),
-      },
+      period,
+      cached: false,
+      updatedAt: new Date().toISOString(),
     })
   } catch (error: any) {
     console.error('Error in ranking API:', error)

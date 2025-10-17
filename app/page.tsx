@@ -12,6 +12,9 @@ export default function Home() {
   const [loading, setLoading] = useState(true)
   const [selectedMonth, setSelectedMonth] = useState<string>('')
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date())
+  const [isCached, setIsCached] = useState(false)
+  const [dataTimestamp, setDataTimestamp] = useState<Date | null>(null)
+  const [nextUpdateIn, setNextUpdateIn] = useState<number>(0)
 
   useEffect(() => {
     // Set current month as default
@@ -26,13 +29,14 @@ export default function Home() {
     }
   }, [selectedMonth])
 
-  // Auto-refresh every 5 minutes
+  // Auto-refresh every 16 minutes (slightly more than cache duration)
+  // to ensure we always get fresh data after cache expires
   useEffect(() => {
     const interval = setInterval(() => {
       if (selectedMonth) {
         fetchRankingData(true)
       }
-    }, 5 * 60 * 1000) // 5 minutes
+    }, 16 * 60 * 1000) // 16 minutes
 
     return () => clearInterval(interval)
   }, [selectedMonth])
@@ -41,12 +45,34 @@ export default function Home() {
     if (!silent) setLoading(true)
     
     try {
-      const response = await fetch(`/api/ranking?month=${selectedMonth}`)
+      const url = `/api/ranking?month=${selectedMonth}`
+      const response = await fetch(url)
       const data = await response.json()
       
       if (data.success) {
         setPlayers(data.players)
         setLastUpdate(new Date())
+        setIsCached(data.cached || false)
+        
+        // Set data timestamp based on whether it's cached or freshly updated
+        let timestamp: Date
+        if (data.cached && data.cachedAt) {
+          timestamp = new Date(data.cachedAt)
+        } else if (data.updatedAt) {
+          timestamp = new Date(data.updatedAt)
+        } else {
+          timestamp = new Date()
+        }
+        setDataTimestamp(timestamp)
+        
+        // Calculate seconds until next update (15 minutes = 900 seconds)
+        if (data.cached || data.updatedAt) {
+          const cacheAge = (Date.now() - timestamp.getTime()) / 1000 // segundos desde a atualização
+          const remainingSeconds = Math.max(0, 900 - cacheAge) // 900 segundos = 15 minutos
+          setNextUpdateIn(remainingSeconds)
+        } else {
+          setNextUpdateIn(900)
+        }
       } else {
         console.error('Failed to fetch ranking data:', data.error)
       }
@@ -55,10 +81,6 @@ export default function Home() {
     } finally {
       if (!silent) setLoading(false)
     }
-  }
-
-  const handleRefresh = () => {
-    fetchRankingData()
   }
 
   const handleMonthChange = (month: string) => {
@@ -91,8 +113,10 @@ export default function Home() {
         <Header 
           selectedMonth={selectedMonth}
           onMonthChange={handleMonthChange}
-          onRefresh={handleRefresh}
           lastUpdate={lastUpdate}
+          isCached={isCached}
+          dataTimestamp={dataTimestamp}
+          nextUpdateIn={nextUpdateIn}
         />
         
         {loading ? (
