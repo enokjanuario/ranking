@@ -1,14 +1,18 @@
+export type Role = 'top' | 'jungle' | 'mid' | 'bot' | 'suporte'
+
 export interface PlayerStats {
   position: number
   summonerName: string
   puuid: string
   riotId: string
+  role: Role
   winRate: number
   totalGames: number
   wins: number
   losses: number
   kda: number
   avgCS: number // average creep score per game
+  avgVisionScore: number // average vision score per game
   avgGameDuration: number // in minutes
   lpChange: number // LP gained/lost in the period (estimated)
   currentRank?: {
@@ -54,6 +58,7 @@ export interface RiotParticipant {
   gameDuration: number
   totalMinionsKilled: number
   neutralMinionsKilled: number
+  visionScore?: number
 }
 
 export interface ChampionStats {

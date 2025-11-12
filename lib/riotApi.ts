@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { RIOT_API_CONFIG, RIOT_API_ENDPOINTS, DDRAGON_VERSION } from './constants'
+import { RIOT_API_CONFIG, RIOT_API_ENDPOINTS, DDRAGON_VERSION, PLAYER_ROLES } from './constants'
 import { RiotMatchDetails, PlayerStats, ChampionStats } from '@/types'
 import { calculateLPChange, rankToAbsoluteLP } from './lpCalculator'
 import { saveRankSnapshot, getRankSnapshot } from './rankSnapshot'
@@ -147,6 +147,7 @@ export async function calculatePlayerStats(
         summonerName: riotId.split('#')[0],
         puuid,
         riotId,
+        role: PLAYER_ROLES[riotId] || 'mid',
         winRate: 0,
         totalGames: 0,
         wins: 0,
@@ -155,6 +156,7 @@ export async function calculatePlayerStats(
         currentRank: currentRank || undefined,
         kda: 0,
         avgCS: 0,
+        avgVisionScore: 0,
         avgGameDuration: 0,
         mostPlayedChampion: {
           name: 'Unknown',
@@ -171,6 +173,7 @@ export async function calculatePlayerStats(
     let totalDeaths = 0
     let totalAssists = 0
     let totalCS = 0
+    let totalVisionScore = 0
     let totalDuration = 0
     const championStats: ChampionStats = {}
 
@@ -210,6 +213,7 @@ export async function calculatePlayerStats(
       totalDeaths += participant.deaths
       totalAssists += participant.assists
       totalCS += (participant.totalMinionsKilled || 0) + (participant.neutralMinionsKilled || 0)
+      totalVisionScore += participant.visionScore || 0
       totalDuration += matchDetails.info.gameDuration
 
       // Track champion stats
@@ -226,6 +230,7 @@ export async function calculatePlayerStats(
     const winRate = totalGames > 0 ? (wins / totalGames) * 100 : 0
     const kda = totalDeaths > 0 ? (totalKills + totalAssists) / totalDeaths : totalKills + totalAssists
     const avgCS = totalGames > 0 ? totalCS / totalGames : 0
+    const avgVisionScore = totalGames > 0 ? totalVisionScore / totalGames : 0
     const avgGameDuration = totalGames > 0 ? totalDuration / totalGames / 60 : 0
     
     // Calculate REAL LP change using rank snapshots
@@ -274,15 +279,17 @@ export async function calculatePlayerStats(
       summonerName: riotId.split('#')[0],
       puuid,
       riotId,
+      role: PLAYER_ROLES[riotId] || 'mid',
       winRate: parseFloat(winRate.toFixed(2)),
       totalGames,
       wins,
       losses,
       lpChange,
       currentRank: currentRank || undefined,
-      kda: parseFloat(kda.toFixed(2)),
-      avgCS: parseFloat(avgCS.toFixed(1)),
-      avgGameDuration: parseFloat(avgGameDuration.toFixed(2)),
+        kda: parseFloat(kda.toFixed(2)),
+        avgCS: parseFloat(avgCS.toFixed(1)),
+        avgVisionScore: parseFloat(avgVisionScore.toFixed(1)),
+        avgGameDuration: parseFloat(avgGameDuration.toFixed(2)),
       mostPlayedChampion,
       topChampions: sortedChampions,
     }

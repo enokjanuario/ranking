@@ -2,40 +2,158 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --foreground-rgb: 255, 255, 255;
-  --background-rgb: 13, 17, 28;
+@layer base {
+  :root {
+    /* Nova paleta YoJornada */
+    /* Primária - SERENIDADE (Azul) */
+    --color-primary: 0, 106, 255;
+    --color-primary-light: 61, 140, 255;
+    --color-primary-dark: 0, 82, 204;
+    
+    /* Secundária - OTIMISMO (Amarelo) */
+    --color-secondary: 239, 217, 113;
+    --color-secondary-light: 245, 232, 157;
+    --color-secondary-dark: 212, 186, 74;
+    
+    /* Acento - SABEDORIA (Roxo) */
+    --color-accent: 49, 33, 120;
+    --color-accent-light: 74, 51, 153;
+    --color-accent-dark: 31, 21, 80;
+    
+    /* Neutra - FOCO (Bege) */
+    --color-neutral: 249, 243, 226;
+    --color-neutral-light: 253, 251, 245;
+    --color-neutral-dark: 232, 220, 197;
+    
+    /* Backgrounds */
+    --background-primary: 26, 16, 66;      /* Roxo muito escuro */
+    --background-secondary: 37, 24, 96;    /* Roxo médio escuro */
+    --background-card: 45, 31, 107;        /* Roxo para cards */
+    --background-hover: 58, 38, 133;       /* Roxo hover */
+    
+    /* Text Colors */
+    --foreground-rgb: 249, 243, 226;       /* Bege claro */
+    --background-rgb: 26, 16, 66;          /* Roxo escuro */
+  }
+
+  html {
+    font-family: var(--font-inter), system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+
+  body {
+    @apply text-neutral bg-gradient-to-b from-dark-bg to-[#0f0a2e] min-h-screen;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-poppins), var(--font-inter), sans-serif;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
 }
 
-body {
-  color: rgb(var(--foreground-rgb));
-  background: rgb(var(--background-rgb));
-  min-height: 100vh;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
-}
+@layer utilities {
+  /* Custom scrollbar com nova paleta - Minimalista */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
 
-/* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 8px;
-}
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
 
-::-webkit-scrollbar-track {
-  background: #0d111c;
-}
+  ::-webkit-scrollbar-thumb {
+    background: rgba(0, 106, 255, 0.3);
+    border-radius: 99px;
+  }
 
-::-webkit-scrollbar-thumb {
-  background: #2d3748;
-  border-radius: 4px;
-}
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 106, 255, 0.6);
+  }
 
-::-webkit-scrollbar-thumb:hover {
-  background: #4a5568;
-}
+  /* Smooth transitions - mais refinadas */
+  * {
+    @apply transition-all duration-200 ease-out;
+  }
 
-/* Smooth transitions */
-* {
-  transition-property: background-color, border-color, color;
-  transition-duration: 150ms;
-  transition-timing-function: ease-in-out;
+  /* Glassmorphism effect */
+  .glass {
+    background: rgba(45, 31, 107, 0.4);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+  }
+
+  .glass-light {
+    background: rgba(45, 31, 107, 0.2);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+  }
+
+  /* Subtle glow effects */
+  .glow-primary {
+    box-shadow: 0 0 24px rgba(0, 106, 255, 0.15);
+  }
+
+  .glow-primary-hover:hover {
+    box-shadow: 0 0 32px rgba(0, 106, 255, 0.25);
+  }
+
+  .glow-secondary {
+    box-shadow: 0 0 24px rgba(239, 217, 113, 0.15);
+  }
+
+  .glow-secondary-hover:hover {
+    box-shadow: 0 0 32px rgba(239, 217, 113, 0.25);
+  }
+
+  /* Soft shadows for depth */
+  .shadow-soft {
+    box-shadow: 0 2px 16px rgba(0, 0, 0, 0.1);
+  }
+
+  .shadow-soft-lg {
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
+  }
+
+  /* Modern gradients */
+  .gradient-primary {
+    background: linear-gradient(135deg, rgb(0, 106, 255) 0%, rgb(61, 140, 255) 100%);
+  }
+
+  .gradient-secondary {
+    background: linear-gradient(135deg, rgb(239, 217, 113) 0%, rgb(245, 232, 157) 100%);
+  }
+
+  .gradient-accent {
+    background: linear-gradient(135deg, rgb(49, 33, 120) 0%, rgb(31, 21, 80) 100%);
+  }
+
+  .gradient-card {
+    background: linear-gradient(135deg, rgba(45, 31, 107, 0.4) 0%, rgba(45, 31, 107, 0.2) 100%);
+  }
+
+  /* Text gradients */
+  .text-gradient-primary {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary-light;
+  }
+
+  .text-gradient-secondary {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-secondary to-secondary-light;
+  }
+
+  /* Smooth scale animation */
+  .scale-hover {
+    @apply transition-transform duration-300 ease-out;
+  }
+
+  .scale-hover:hover {
+    @apply scale-105;
+  }
+
+  /* Smooth focus rings - mais sutis */
+  .focus-ring {
+    @apply focus:outline-none focus:ring-2 focus:ring-primary/20 focus:ring-offset-2 focus:ring-offset-dark-bg;
+  }
 }
 

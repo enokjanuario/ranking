@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "docs": "npx http-server docs -p 8080",
+    "docs:build": "node scripts/build-docs.js"
   },
   "dependencies": {
     "@upstash/redis": "^1.35.6",

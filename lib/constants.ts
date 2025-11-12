@@ -5,7 +5,8 @@ export const TRACKED_PLAYERS = [
   'Dorrows#0488',
   'Atziluth#537',
   'Gordaker#prata',
-  
+  'KallaKvothe#br1',
+  'Josedeodo#NA12',
   // Adicione mais 12 jogadores aqui quando quiser expandir
   // Por enquanto, você pode começar só com essas 3 contas acima
   // Exemplos:
@@ -19,6 +20,17 @@ export const PLAYER_NICKNAMES: Record<string, string> = {
   'Gordaker#prata': 'JB Sniper',
   // Adicione mais apelidos aqui conforme necessário
   // 'RiotID#TAG': 'Apelido',
+}
+
+// Mapeamento de RiotIDs para roles (lanes)
+export const PLAYER_ROLES: Record<string, 'top' | 'jungle' | 'mid' | 'bot' | 'suporte'> = {
+  'Dorrows#0488': 'mid',
+  'Atziluth#537': 'mid',
+  'Gordaker#prata': 'mid',
+  'KallaKvothe#br1': 'suporte',
+  'Josedeodo#NA12': 'jungle',
+  // Adicione mais roles aqui conforme necessário
+  // 'RiotID#TAG': 'role',
 }
 
 // Riot API Configuration

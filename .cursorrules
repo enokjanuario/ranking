@@ -1,0 +1,361 @@
+# YoJornada Ranking System - Cursor Rules
+
+## Project Overview
+
+This is a Next.js 14 application that tracks League of Legends player rankings and statistics using the Riot Games API. The system features intelligent Redis caching, precise LP calculations, and a modern responsive interface.
+
+## Documentation Structure
+
+**Always consult the appropriate documentation before making changes:**
+
+- `docs/README.md` - Project overview and navigation
+- `docs/ARCHITECTURE.md` - System architecture, data flow, and design patterns
+- `docs/API.md` - API routes and Riot API integration
+- `docs/SETUP.md` - Environment setup and installation
+- `docs/DEVELOPMENT.md` - Development workflows and adding features
+- `docs/DEPLOYMENT.md` - Deployment guide for Vercel
+- `docs/TROUBLESHOOTING.md` - Common issues and solutions
+- `docs/TYPES.md` - TypeScript interfaces and types
+- `docs/FORMULAS.md` - Mathematical formulas and calculations
+- `docs/STYLE-GUIDE.md` - Visual styling and component patterns
+
+## Code Style and Conventions
+
+### Naming Conventions
+
+- **Components**: PascalCase (`PlayerTable.tsx`, `LoadingSpinner.tsx`)
+- **Functions/Variables**: camelCase (`calculatePlayerStats`, `winRate`)
+- **Constants**: UPPER_SNAKE_CASE (`CACHE_DURATION_SECONDS`, `TRACKED_PLAYERS`)
+- **Types/Interfaces**: PascalCase (`PlayerStats`, `RankInfo`)
+- **Files**: camelCase for utilities (`riotApi.ts`, `lpCalculator.ts`)
+
+### File Organization
+
+```
+app/          - Next.js App Router (pages and API routes)
+components/   - React components (presentational)
+lib/          - Business logic and utilities
+types/        - TypeScript type definitions
+public/       - Static assets
+docs/         - Documentation
+```
+
+### Import Order
+
+1. External libraries (react, axios, etc.)
+2. Next.js imports
+3. Local components
+4. Utilities and constants
+5. Types
+
+Example:
+```typescript
+import { useState, useEffect } from 'react'
+import { NextRequest, NextResponse } from 'next/server'
+import PlayerTable from '@/components/PlayerTable'
+import { calculatePlayerStats } from '@/lib/riotApi'
+import { PlayerStats } from '@/types'
+```
+
+## Architecture Principles
+
+### 1. Cache-First Strategy
+
+- Always check Redis cache before fetching from Riot API
+- Use mutex locks to prevent concurrent updates
+- TTL: 15 minutes (configurable in `lib/cache-redis.ts`)
+- See `docs/ARCHITECTURE.md` for cache flow
+
+### 2. Rate Limiting Compliance
+
+- Riot API limit: 20 req/s
+- Current implementation: ~3-6 req/s
+- Always use delays between API calls (100-200ms)
+- Process matches in batches of 3 with 500ms delay
+- See `docs/API.md` for rate limiting details
+
+### 3. Type Safety
+
+- Use TypeScript strictly
+- Avoid `any` types
+- Define interfaces for all data structures
+- See `docs/TYPES.md` for all type definitions
+
+### 4. Error Handling
+
+- Always handle API errors gracefully
+- Implement retry logic for transient failures
+- Log errors with context for debugging
+- Never expose sensitive data in error messages
+
+### 5. Performance
+
+- Lazy load images
+- Memoize expensive components
+- Debounce user inputs
+- Optimize bundle size
+- See `docs/DEVELOPMENT.md` for optimization techniques
+
+## Common Tasks
+
+### Adding a New Player
+
+**File**: `lib/constants.ts`
+```typescript
+export const TRACKED_PLAYERS = [
+  'ExistingPlayer#TAG',
+  'NewPlayer#TAG',  // Add here
+]
+```
+
+After adding, clear cache: `curl -X POST http://localhost:3000/api/clear-cache`
+
+See `docs/DEVELOPMENT.md` → "Adding Features" → "Add Novo Jogador"
+
+### Adding a New Metric
+
+1. Update `PlayerStats` type in `types/index.ts`
+2. Calculate metric in `lib/riotApi.ts` → `calculatePlayerStats()`
+3. Add column to `components/PlayerTable.tsx`
+4. Update sort type if needed
+
+See `docs/DEVELOPMENT.md` → "Adding Features" → "Adicionar Nova Métrica"
+
+### Modifying Cache Duration
+
+**File**: `lib/cache-redis.ts`
+```typescript
+const CACHE_DURATION_SECONDS = 15 * 60  // Change this
+```
+
+Also update auto-refresh in `app/page.tsx`
+
+See `docs/DEVELOPMENT.md` → "Adding Features" → "Modificar Duração do Cache"
+
+### Debugging Cache Issues
+
+1. Check cache status: `curl http://localhost:3000/api/cache-status`
+2. Clear cache: `curl -X POST http://localhost:3000/api/clear-cache`
+3. Check Upstash Dashboard for Redis data
+4. See `docs/TROUBLESHOOTING.md` → "Problemas de Cache"
+
+## API Routes
+
+### GET /api/ranking
+
+Main ranking endpoint. Returns player statistics for a given month.
+
+**Query Params**:
+- `month` (required): YYYY-MM format
+- `force` (optional): "true" to force refresh
+
+See `docs/API.md` for complete API documentation
+
+### GET /api/cache-status
+
+Returns cache status for all months. Useful for monitoring.
+
+### POST /api/clear-cache
+
+Clears all cache entries. Use with caution in production.
+
+## Important Formulas
+
+### Win Rate
+```
+winRate = (wins / totalGames) × 100
+```
+
+### KDA
+```
+kda = deaths > 0 ? (kills + assists) / deaths : (kills + assists)
+```
+
+### LP Absolute
+```
+absoluteLP = tierValue + divisionValue + currentLP
+```
+
+See `docs/FORMULAS.md` for all formulas and examples
+
+## Styling Guidelines
+
+### Colors
+
+- **Neon Purple** (#a855f7): Primary highlights
+- **Neon Blue** (#3b82f6): Links, buttons
+- **Dark BG** (#0d111c): Main background
+- **Dark Card** (#1a1f2e): Cards, containers
+
+### Status Colors
+
+- Win Rate >= 60%: green
+- Win Rate >= 50%: yellow
+- Win Rate < 50%: red
+
+See `docs/STYLE-GUIDE.md` for complete styling guide
+
+### Tailwind Classes
+
+Use utility-first approach. Common patterns:
+
+**Button**:
+```tsx
+<button className="bg-neon-blue hover:bg-blue-600 text-white font-semibold px-6 py-2 rounded-md transition-all duration-150">
+```
+
+**Card**:
+```tsx
+<div className="bg-dark-card rounded-lg p-6 shadow-lg border border-gray-700">
+```
+
+## Testing
+
+### Manual Testing Checklist
+
+1. Test cache hit/miss
+2. Test concurrent requests
+3. Test different months
+4. Test filters and sorting
+5. Test responsive layout
+6. Test API endpoints
+
+See `docs/DEVELOPMENT.md` → "Testing" for complete test procedures
+
+## Deployment
+
+### Vercel Deployment
+
+1. Connect GitHub repository
+2. Set environment variables:
+   - `RIOT_API_KEY`
+   - `RIOT_REGION`
+   - `RIOT_ROUTING`
+   - `UPSTASH_REDIS_REST_URL`
+   - `UPSTASH_REDIS_REST_TOKEN`
+3. Deploy
+
+See `docs/DEPLOYMENT.md` for complete deployment guide
+
+### Environment Variables
+
+Never commit `.env.local` or expose API keys. Always use environment variables for:
+- Riot API key
+- Redis credentials
+- Any sensitive configuration
+
+## Error Handling Patterns
+
+### Riot API Errors
+
+```typescript
+try {
+  const data = await riotApiCall()
+} catch (error: any) {
+  if (error.response?.status === 429) {
+    // Rate limited - wait and retry
+    await delay(retryAfter * 1000)
+  } else if (error.response?.status === 404) {
+    // Not found - skip gracefully
+    return null
+  } else {
+    // Other errors - log and rethrow
+    console.error('Riot API error:', error)
+    throw error
+  }
+}
+```
+
+See `docs/TROUBLESHOOTING.md` → "Erros de API"
+
+## Performance Best Practices
+
+1. **Cache aggressively** - Use Redis for all API responses
+2. **Batch requests** - Process multiple items together
+3. **Lazy load** - Use Next.js Image component with lazy loading
+4. **Memoize** - Use React.memo for expensive components
+5. **Debounce** - Debounce user inputs (search, filters)
+
+See `docs/DEVELOPMENT.md` → "Performance"
+
+## Common Pitfalls to Avoid
+
+### ❌ Don't
+
+- Don't use cache in memory for serverless (use Redis)
+- Don't expose API keys in frontend code
+- Don't ignore rate limits
+- Don't use `any` type without good reason
+- Don't commit `.env.local`
+- Don't force push to main
+- Don't skip error handling
+
+### ✅ Do
+
+- Use TypeScript strictly
+- Implement proper error handling
+- Log important operations
+- Test locally before deploying
+- Follow naming conventions
+- Document complex logic
+- Keep functions small and focused
+- Write descriptive commit messages
+
+## Git Workflow
+
+### Commit Message Format
+
+Use Conventional Commits:
+
+```
+feat: add damage per minute metric
+fix: correct LP calculation for Master+
+docs: update API documentation
+style: format code with Prettier
+refactor: simplify player ranking logic
+perf: optimize Redis queries
+test: add tests for LP calculator
+chore: update dependencies
+```
+
+### Branch Strategy
+
+- `main` - Production
+- `feature/*` - New features
+- `fix/*` - Bug fixes
+- `hotfix/*` - Urgent production fixes
+
+## Key Files and Their Purpose
+
+```
+app/api/ranking/route.ts       - Main API endpoint, implements cache strategy
+lib/riotApi.ts                 - Riot API integration, rate limiting
+lib/cache-redis.ts             - Redis cache implementation, mutex locks
+lib/lpCalculator.ts            - LP calculation logic
+lib/rankSnapshot.ts            - Snapshot system for LP change tracking
+lib/constants.ts               - Configuration (players, API endpoints)
+components/PlayerTable.tsx     - Main table component with sorting/filtering
+types/index.ts                 - All TypeScript type definitions
+```
+
+## When to Consult Documentation
+
+**Before adding features**: Read `docs/DEVELOPMENT.md`
+**When debugging**: Check `docs/TROUBLESHOOTING.md`
+**For API changes**: Consult `docs/API.md`
+**For styling**: Reference `docs/STYLE-GUIDE.md`
+**For type definitions**: See `docs/TYPES.md`
+**For calculations**: Check `docs/FORMULAS.md`
+
+## Additional Resources
+
+- [Next.js Documentation](https://nextjs.org/docs)
+- [Riot API Documentation](https://developer.riotgames.com/apis)
+- [Tailwind CSS Documentation](https://tailwindcss.com/docs)
+- [Upstash Redis Documentation](https://docs.upstash.com/redis)
+
+---
+
+**Last Updated**: November 2025
+**Maintained by**: YoJornada Team
+

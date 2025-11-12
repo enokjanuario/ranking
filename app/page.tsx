@@ -88,31 +88,23 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen bg-dark-bg relative overflow-hidden">
-      {/* Left Side Image */}
+    <main className="min-h-screen relative overflow-hidden">
+      {/* Background colorido da Academia Y */}
       <div 
-        className="fixed top-0 left-0 bottom-0 z-0 pointer-events-none"
+        className="fixed inset-0 z-0"
         style={{
-          width: 'calc((100vw - 1400px) / 2)',
+          backgroundImage: 'url(/background-colorido.png)',
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat',
         }}
       >
-        <img 
-          src="/lateral1.jpg" 
-          alt="Background" 
-          style={{ 
-            width: '100%',
-            height: '100%',
-            objectFit: 'cover',
-            objectPosition: 'right center',
-            opacity: 0.25,
-          }}
-        />
+        {/* Overlay para melhorar legibilidade - mais transparente para mostrar o background */}
+        <div className="absolute inset-0 bg-gradient-to-b from-dark-bg/70 via-dark-bg/75 to-dark-bg/80"></div>
       </div>
       
       <div className="container mx-auto px-4 py-6 max-w-[1400px] relative z-10">
         <Header 
-          selectedMonth={selectedMonth}
-          onMonthChange={handleMonthChange}
           lastUpdate={lastUpdate}
           isCached={isCached}
           dataTimestamp={dataTimestamp}
@@ -122,7 +114,11 @@ export default function Home() {
         {loading ? (
           <LoadingSpinner />
         ) : (
-          <PlayerTable players={players} />
+          <PlayerTable 
+            players={players}
+            selectedMonth={selectedMonth}
+            onMonthChange={handleMonthChange}
+          />
         )}
 
         <Footer />
