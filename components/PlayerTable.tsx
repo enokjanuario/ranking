@@ -15,8 +15,30 @@ interface PlayerTableProps {
   onMonthChange: (month: string) => void
 }
 
-type SortField = 'position' | 'summonerName' | 'winRate' | 'totalGames' | 'kda' | 'avgCS'
+type SortField = 'position' | 'summonerName' | 'winRate' | 'totalGames' | 'kda' | 'avgCS' | 'currentRank' | 'lpChange'
 type SortOrder = 'asc' | 'desc'
+
+// Tier hierarchy for ranking
+const TIER_HIERARCHY: Record<string, number> = {
+  'IRON': 1,
+  'BRONZE': 2,
+  'SILVER': 3,
+  'GOLD': 4,
+  'PLATINUM': 5,
+  'EMERALD': 6,
+  'DIAMOND': 7,
+  'MASTER': 8,
+  'GRANDMASTER': 9,
+  'CHALLENGER': 10,
+}
+
+// Rank division hierarchy
+const RANK_DIVISION: Record<string, number> = {
+  'IV': 1,
+  'III': 2,
+  'II': 3,
+  'I': 4,
+}
 
 const ROLE_ICONS: Record<Role, string> = {
   top: '/icon-top.png',
@@ -34,6 +56,20 @@ const ROLE_NAMES: Record<Role, string> = {
   suporte: 'Suporte',
 }
 
+const COACH_IMAGES: Record<Role, string> = {
+  top: '/assets/nicklinkPerfil.png',
+  jungle: '/assets/revoltaPerfil.png',
+  mid: '/assets/yodaPerfil.png',
+  bot: '/assets/micaoPerfil.png',
+  suporte: '/assets/dioudPerfil.png',
+}
+
+// Helper function para garantir valores numéricos seguros
+const safeNumber = (value: number | undefined | null, defaultValue: number = 0): number => {
+  if (value === null || value === undefined || isNaN(value)) return defaultValue
+  return Number(value)
+}
+
 export default function PlayerTable({ players, selectedMonth, onMonthChange }: PlayerTableProps) {
   const [sortField, setSortField] = useState<SortField>('position')
   const [sortOrder, setSortOrder] = useState<SortOrder>('asc')
@@ -41,25 +77,21 @@ export default function PlayerTable({ players, selectedMonth, onMonthChange }: P
   const [selectedRole, setSelectedRole] = useState<Role | 'all'>('all')
   const [months, setMonths] = useState<{ value: string; label: string }[]>([])
 
+  const clearFilters = () => {
+    setSearchTerm('')
+    setSelectedRole('all')
+    setSortField('position')
+    setSortOrder('asc')
+  }
+
+  const hasActiveFilters = searchTerm !== '' || selectedRole !== 'all' || sortField !== 'position' || sortOrder !== 'asc'
+
   useEffect(() => {
-    // Generate list of available months from October 2024 onwards
-    const monthList = []
-    const now = new Date()
-    const startDate = new Date(2024, 9, 1) // October 2024 (month is 0-indexed, so 9 = October)
-    
-    // Start from current month and go back to October 2024
-    let currentDate = new Date(now.getFullYear(), now.getMonth(), 1)
-    
-    while (currentDate >= startDate) {
-      const value = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`
-      const label = format(currentDate, 'MMMM yyyy', { locale: ptBR })
-      monthList.push({ value, label: label.charAt(0).toUpperCase() + label.slice(1) })
-      
-      // Go to previous month
-      currentDate = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1)
-    }
-    
-    setMonths(monthList)
+    // Apenas novembro de 2024
+    const novemberDate = new Date(2024, 10, 1) // November 2024 (month is 0-indexed, so 10 = November)
+    const value = '2024-11'
+    const label = format(novemberDate, 'MMMM yyyy', { locale: ptBR })
+    setMonths([{ value, label: label.charAt(0).toUpperCase() + label.slice(1) }])
   }, [])
 
   const handleSort = (field: SortField) => {
@@ -82,13 +114,37 @@ export default function PlayerTable({ players, selectedMonth, onMonthChange }: P
     })
 
     filtered.sort((a, b) => {
-      let aValue = a[sortField]
-      let bValue = b[sortField]
+      let aValue: any = a[sortField]
+      let bValue: any = b[sortField]
 
       if (sortField === 'summonerName') {
         aValue = a.summonerName.toLowerCase()
         bValue = b.summonerName.toLowerCase()
+      } else if (sortField === 'currentRank') {
+        // Sort by rank: tier first, then division, then LP
+        const aTier = a.currentRank?.tier ? TIER_HIERARCHY[a.currentRank.tier.toUpperCase()] || 0 : 0
+        const bTier = b.currentRank?.tier ? TIER_HIERARCHY[b.currentRank.tier.toUpperCase()] || 0 : 0
+        
+        if (aTier !== bTier) {
+          return sortOrder === 'asc' ? aTier - bTier : bTier - aTier
+        }
+        
+        // Same tier, sort by division
+        const aDiv = a.currentRank?.rank ? RANK_DIVISION[a.currentRank.rank.toUpperCase()] || 0 : 0
+        const bDiv = b.currentRank?.rank ? RANK_DIVISION[b.currentRank.rank.toUpperCase()] || 0 : 0
+        
+        if (aDiv !== bDiv) {
+          return sortOrder === 'asc' ? aDiv - bDiv : bDiv - aDiv
+        }
+        
+        // Same division, sort by LP
+        aValue = a.currentRank?.lp || 0
+        bValue = b.currentRank?.lp || 0
       }
+
+      // Handle null/undefined values
+      if (aValue == null) aValue = sortOrder === 'asc' ? Infinity : -Infinity
+      if (bValue == null) bValue = sortOrder === 'asc' ? Infinity : -Infinity
 
       if (aValue < bValue) return sortOrder === 'asc' ? -1 : 1
       if (aValue > bValue) return sortOrder === 'asc' ? 1 : -1
@@ -167,88 +223,139 @@ export default function PlayerTable({ players, selectedMonth, onMonthChange }: P
           />
         </div>
 
-        {/* Period and Results - Aligned, No Overlap */}
-        <div className="flex items-center gap-4 flex-wrap lg:flex-nowrap">
-          {/* Period Selector - Narrower */}
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <label htmlFor="month-select-table" className="text-neutral/50 text-sm font-semibold uppercase tracking-wider whitespace-nowrap">
-              Período
-            </label>
-            <select
-              id="month-select-table"
-              value={selectedMonth}
-              onChange={(e) => onMonthChange(e.target.value)}
-              className="w-48 glass-light text-neutral px-4 py-4 rounded-2xl border-0 focus:outline-none focus:ring-2 focus:ring-primary/40 hover:glass hover:shadow-soft-lg transition-all cursor-pointer font-semibold text-base shadow-soft backdrop-blur-sm"
-            >
-              {months.map((month) => (
-                <option key={month.value} value={month.value} className="bg-dark-card text-neutral">
-                  {month.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Results Count - No Overlap */}
-          <div className="flex items-center justify-center lg:justify-start px-7 py-4 bg-gradient-to-r from-secondary/20 to-secondary/10 rounded-2xl shadow-soft backdrop-blur-sm flex-shrink-0">
-            <span className="text-neutral/50 text-sm font-semibold mr-2">Exibindo</span>
-            <span className="text-secondary font-black text-xl">{filteredAndSortedPlayers.length}</span>
-            <span className="text-neutral/30 mx-2 font-bold">/</span>
-            <span className="text-neutral/60 font-bold text-lg">{players.length}</span>
-          </div>
+        {/* Period Selector */}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <label htmlFor="month-select-table" className="text-neutral/50 text-sm font-semibold uppercase tracking-wider whitespace-nowrap">
+            Período
+          </label>
+          <select
+            id="month-select-table"
+            value={selectedMonth}
+            onChange={(e) => onMonthChange(e.target.value)}
+            className="w-48 glass-light text-neutral px-4 py-4 rounded-2xl border-0 focus:outline-none focus:ring-2 focus:ring-primary/40 hover:glass hover:shadow-soft-lg transition-all cursor-pointer font-semibold text-base shadow-soft backdrop-blur-sm"
+          >
+            {months.map((month) => (
+              <option key={month.value} value={month.value} className="bg-dark-card text-neutral">
+                {month.label}
+              </option>
+            ))}
+          </select>
         </div>
       </motion.div>
 
-      {/* Role Filter - More Visible (Below Search) */}
+      {/* Filters and Sort - Combined Horizontal */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.15 }}
-        className="flex justify-center items-center gap-3 flex-wrap"
+        className="flex flex-wrap justify-between items-center gap-4"
       >
-        {/* All Roles Button - More Visible */}
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.98 }}
-          onClick={() => setSelectedRole('all')}
-          className={`px-8 py-3 rounded-full text-sm font-bold uppercase tracking-wide transition-all duration-300 shadow-soft ${
-            selectedRole === 'all'
-              ? 'bg-gradient-to-r from-primary to-primary-light text-neutral border-2 border-primary/50 shadow-lg shadow-primary/30'
-              : 'bg-dark-bg/70 text-neutral/80 hover:text-neutral hover:bg-dark-bg/80 border-2 border-neutral/30 hover:border-primary/50'
-          }`}
-        >
-          Todos
-        </motion.button>
-        
-        {/* Role Icons - More Visible */}
-        {(Object.keys(ROLE_ICONS) as Role[]).map((role) => (
+        {/* Left Side - Role Filter and Sort */}
+        <div className="flex flex-wrap items-center gap-4">
+          {/* Role Filter */}
+          <div className="flex items-center gap-3 flex-wrap">
+            {/* All Roles Button - More Visible */}
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => setSelectedRole('all')}
+              className={`px-8 py-3 rounded-full text-sm font-bold uppercase tracking-wide transition-all duration-300 shadow-soft ${
+                selectedRole === 'all'
+                  ? 'bg-gradient-to-r from-primary to-primary-light text-neutral border-2 border-primary/50 shadow-lg shadow-primary/30'
+                  : 'bg-dark-bg/70 text-neutral/80 hover:text-neutral hover:bg-dark-bg/80 border-2 border-neutral/30 hover:border-primary/50'
+              }`}
+            >
+              Todos
+            </motion.button>
+            
+            {/* Role Icons - More Visible */}
+            {(Object.keys(ROLE_ICONS) as Role[]).map((role) => (
+              <motion.button
+                key={role}
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => setSelectedRole(role)}
+                className={`relative w-12 h-12 rounded-xl transition-all duration-300 group shadow-soft flex items-center justify-center ${
+                  selectedRole === role
+                    ? 'bg-gradient-to-br from-primary/40 to-primary/20 border-2 border-primary/70 shadow-lg shadow-primary/30'
+                    : 'bg-dark-bg/60 border-2 border-neutral/40 hover:bg-dark-bg/70 hover:border-primary/50 hover:shadow-md'
+                }`}
+                title={ROLE_NAMES[role]}
+              >
+                <Image
+                  src={ROLE_ICONS[role]}
+                  alt={ROLE_NAMES[role]}
+                  width={40}
+                  height={40}
+                  className={`object-contain transition-all duration-300 ${selectedRole === role ? 'opacity-100 drop-shadow-lg' : 'opacity-80 group-hover:opacity-100'} ${role === 'suporte' ? 'object-[center_center] scale-110' : ''}`}
+                  style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                />
+                {/* Selected indicator - more visible */}
+                {selectedRole === role && (
+                  <motion.div 
+                    layoutId="roleIndicator"
+                    className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-primary rounded-full shadow-lg shadow-primary/50"
+                  />
+                )}
+              </motion.button>
+            ))}
+          </div>
+
+          {/* Sort Buttons */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-neutral/60 text-sm font-medium">Ordenar por:</span>
+            {[
+              { field: 'currentRank' as SortField, label: 'Elo' },
+              { field: 'winRate' as SortField, label: 'Win Rate' },
+              { field: 'kda' as SortField, label: 'KDA' },
+              { field: 'totalGames' as SortField, label: 'Jogos' },
+              { field: 'lpChange' as SortField, label: 'LP' },
+            ].map(({ field, label }) => (
+              <motion.button
+                key={field}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => handleSort(field)}
+                className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 flex items-center gap-2 ${
+                  sortField === field
+                    ? 'bg-gradient-to-r from-primary to-primary-light text-neutral shadow-lg shadow-primary/30'
+                    : 'bg-dark-bg/60 text-neutral/70 hover:bg-dark-bg/70 hover:text-neutral border border-neutral/30'
+                }`}
+              >
+                {label}
+                <SortIcon field={field} />
+              </motion.button>
+            ))}
+          </div>
+        </div>
+
+        {/* Right Side - Results Count and Clear Filters */}
+        <div className="flex items-center gap-3">
           <motion.button
-            key={role}
-            whileHover={{ scale: 1.1 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={() => setSelectedRole(role)}
-            className={`relative p-3 rounded-xl transition-all duration-300 group shadow-soft ${
-              selectedRole === role
-                ? 'bg-gradient-to-br from-primary/40 to-primary/20 border-2 border-primary/70 shadow-lg shadow-primary/30'
-                : 'bg-dark-bg/60 border-2 border-neutral/40 hover:bg-dark-bg/70 hover:border-primary/50 hover:shadow-md'
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: hasActiveFilters ? 1 : 0.5, scale: 1 }}
+            whileHover={hasActiveFilters ? { scale: 1.05 } : {}}
+            whileTap={hasActiveFilters ? { scale: 0.95 } : {}}
+            onClick={clearFilters}
+            disabled={!hasActiveFilters}
+            className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-200 flex items-center gap-1.5 ${
+              hasActiveFilters
+                ? 'text-neutral/70 hover:text-neutral bg-dark-bg/60 hover:bg-dark-bg/70 border border-neutral/30 hover:border-neutral/40 cursor-pointer'
+                : 'text-neutral/40 bg-dark-bg/40 border border-neutral/20 cursor-not-allowed'
             }`}
-            title={ROLE_NAMES[role]}
           >
-            <Image
-              src={ROLE_ICONS[role]}
-              alt={ROLE_NAMES[role]}
-              width={28}
-              height={28}
-              className={`transition-all duration-300 ${selectedRole === role ? 'opacity-100 drop-shadow-lg' : 'opacity-80 group-hover:opacity-100'}`}
-            />
-            {/* Selected indicator - more visible */}
-            {selectedRole === role && (
-              <motion.div 
-                layoutId="roleIndicator"
-                className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-primary rounded-full shadow-lg shadow-primary/50"
-              />
-            )}
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+            Limpar Filtros
           </motion.button>
-        ))}
+          <div className="flex items-center px-4 py-2 bg-gradient-to-r from-secondary/20 to-secondary/10 rounded-xl shadow-soft backdrop-blur-sm flex-shrink-0">
+            <span className="text-neutral/50 text-xs font-semibold mr-1.5">Exibindo</span>
+            <span className="text-secondary font-black text-sm">{filteredAndSortedPlayers.length}</span>
+            <span className="text-neutral/30 mx-1 font-bold text-xs">/</span>
+            <span className="text-neutral/60 font-bold text-sm">{players.length}</span>
+          </div>
+        </div>
       </motion.div>
 
       {/* Player Cards - Modern Minimalist Design */}
@@ -256,6 +363,7 @@ export default function PlayerTable({ players, selectedMonth, onMonthChange }: P
         {filteredAndSortedPlayers.map((player, idx) => {
           const nickname = PLAYER_NICKNAMES[player.riotId] || player.summonerName
           const rankImg = getRankImage(player.currentRank?.tier)
+          const filteredPosition = idx + 1 // Posição na lista filtrada e ordenada
           
           return (
             <motion.div
@@ -268,18 +376,18 @@ export default function PlayerTable({ players, selectedMonth, onMonthChange }: P
               {/* Subtle accent line */}
               <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-primary/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
               
-              <div className="flex flex-col lg:flex-row items-center gap-2">
+              <div className="flex flex-col lg:flex-row items-start lg:items-center gap-3">
                 
-                {/* Position + Player Info */}
-                <div className="flex items-center gap-2 flex-1 min-w-0">
+                {/* Position + Player Info - Fixed Width */}
+                <div className="flex items-center gap-2 flex-shrink-0" style={{ width: '220px' }}>
                   {/* Position Badge - Much Smaller */}
                   <div className={`flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center font-black text-sm transition-all duration-300 ${
-                    player.position === 1 ? 'bg-gradient-to-br from-secondary/40 to-secondary/10 text-secondary shadow-md shadow-secondary/30' :
-                    player.position === 2 ? 'bg-gradient-to-br from-neutral/25 to-neutral/10 text-neutral shadow-md shadow-neutral/20' :
-                    player.position === 3 ? 'bg-gradient-to-br from-primary/40 to-primary/10 text-primary shadow-md shadow-primary/30' :
+                    filteredPosition === 1 ? 'bg-gradient-to-br from-secondary/40 to-secondary/10 text-secondary shadow-md shadow-secondary/30' :
+                    filteredPosition === 2 ? 'bg-gradient-to-br from-neutral/25 to-neutral/10 text-neutral shadow-md shadow-neutral/20' :
+                    filteredPosition === 3 ? 'bg-gradient-to-br from-primary/40 to-primary/10 text-primary shadow-md shadow-primary/30' :
                     'bg-dark-bg/40 text-neutral/60 shadow-inner'
                   }`}>
-                    {player.position}
+                    {filteredPosition}
                   </div>
 
                   {/* Player Name + LP Change - Compact */}
@@ -289,7 +397,7 @@ export default function PlayerTable({ players, selectedMonth, onMonthChange }: P
                         {nickname}
                       </h3>
                       {player.lpChange !== 0 && (
-                        <div className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                        <div className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold flex-shrink-0 ${
                           player.lpChange > 0 ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
                         }`}>
                           {player.lpChange > 0 ? '↑' : '↓'} {Math.abs(player.lpChange)}
@@ -298,10 +406,12 @@ export default function PlayerTable({ players, selectedMonth, onMonthChange }: P
                     </div>
                     <p className="text-[10px] text-neutral/50 font-medium truncate">{player.riotId}</p>
                   </div>
+                </div>
 
-                  {/* Rank Badge - Much Smaller */}
-                  {player.currentRank && rankImg && (
-                    <div className="hidden md:flex items-center gap-1.5 px-2">
+                {/* Rank Badge - Fixed Width */}
+                <div className="flex-shrink-0 hidden md:flex items-center justify-center" style={{ width: '80px' }}>
+                  {player.currentRank && rankImg ? (
+                    <div className="flex flex-col items-center gap-1">
                       <div className="relative w-10 h-10 scale-hover">
                         <Image
                           src={rankImg}
@@ -311,70 +421,91 @@ export default function PlayerTable({ players, selectedMonth, onMonthChange }: P
                           className="object-contain opacity-90 group-hover:opacity-100 drop-shadow-md"
                         />
                       </div>
-                      <span className="text-[10px] text-neutral/70 font-semibold px-1.5 py-0.5 bg-dark-bg/40 rounded-full">
-                        {player.currentRank.lp}
+                      {/* Division (I, II, III, IV) */}
+                      {player.currentRank.rank && (
+                        <span className="text-[10px] text-neutral/80 font-bold">
+                          {player.currentRank.rank}
+                        </span>
+                      )}
+                      {/* LP */}
+                      <span className="text-[9px] text-neutral/60 font-semibold px-1.5 py-0.5 bg-dark-bg/40 rounded-full">
+                        {player.currentRank.lp} LP
                       </span>
                     </div>
+                  ) : (
+                    <div className="w-10 h-10"></div>
                   )}
                 </div>
 
-                {/* Stats Grid - Ultra Compact Horizontal */}
-                <div className="flex flex-wrap lg:flex-nowrap items-center gap-3 lg:gap-4 w-full lg:w-auto">
+                {/* Stats Grid - Ultra Compact Horizontal - Fixed Width Columns */}
+                <div className="flex flex-wrap lg:flex-nowrap items-center gap-3 lg:gap-2 flex-1 justify-center lg:justify-start">
                   
-                  {/* Role - Same size as other columns */}
-                  <div className="flex flex-col items-center gap-1 min-w-[70px]">
-                    <div className="flex items-center justify-center">
+                  {/* Role - Fixed Width */}
+                  <div className="flex flex-col items-center gap-1" style={{ width: '70px' }}>
+                    <div className="flex items-center justify-center w-9 h-9">
                       <Image
                         src={ROLE_ICONS[player.role]}
                         alt={ROLE_NAMES[player.role]}
                         width={36}
                         height={36}
-                        className="opacity-80 group-hover:opacity-100 transition-opacity drop-shadow-lg"
+                        className={`opacity-80 group-hover:opacity-100 transition-opacity drop-shadow-lg object-contain ${player.role === 'suporte' ? 'object-[center_center] scale-110' : ''}`}
                         title={ROLE_NAMES[player.role]}
                       />
                     </div>
                     <span className="text-[9px] text-neutral/40 font-medium">{ROLE_NAMES[player.role]}</span>
                   </div>
 
-                  {/* Win Rate - Compact */}
-                  <div className="flex flex-col items-center min-w-[60px]">
+                  {/* Win Rate - Fixed Width */}
+                  <div className="flex flex-col items-center" style={{ width: '70px' }}>
                     <span className={`text-lg font-black ${getWinRateColor(player.winRate)}`}>
-                      {player.winRate.toFixed(0)}%
+                      {safeNumber(player.winRate, 0).toFixed(0)}%
                     </span>
                     <span className="text-[9px] text-neutral/50 font-medium">{player.wins}V-{player.losses}D</span>
                   </div>
 
-                  {/* KDA - Compact */}
-                  <div className="flex flex-col items-center min-w-[55px]">
+                  {/* KDA - Fixed Width */}
+                  <div className="flex flex-col items-center" style={{ width: '70px' }}>
                     <span className={`text-lg font-black ${getKDAColor(player.kda)}`}>
-                      {player.kda.toFixed(2)}
+                      {safeNumber(player.kda, 0).toFixed(2)}
                     </span>
                     <span className="text-[9px] text-neutral/40 font-medium">KDA</span>
                   </div>
 
-                  {/* CS - Compact */}
-                  <div className="flex flex-col items-center min-w-[50px]">
+                  {/* CS - Fixed Width */}
+                  <div className="flex flex-col items-center" style={{ width: '60px' }}>
                     <span className="text-lg font-black text-neutral">
-                      {player.avgCS.toFixed(0)}
+                      {safeNumber(player.avgCS, 0).toFixed(0)}
                     </span>
                     <span className="text-[9px] text-neutral/40 font-medium">CS</span>
                   </div>
 
-                  {/* Vision Score - Compact */}
-                  <div className="flex flex-col items-center min-w-[50px]">
+                  {/* Vision Score - Fixed Width */}
+                  <div className="flex flex-col items-center" style={{ width: '60px' }}>
                     <span className="text-lg font-black text-primary-light">
-                      {player.avgVisionScore.toFixed(0)}
+                      {safeNumber(player.avgVisionScore, 0).toFixed(0)}
                     </span>
                     <span className="text-[9px] text-neutral/40 font-medium">Visão</span>
                   </div>
 
-                  {/* Total Games - Compact */}
-                  <div className="flex flex-col items-center min-w-[45px]">
+                  {/* Total Games - Fixed Width */}
+                  <div className="flex flex-col items-center" style={{ width: '60px' }}>
                     <span className="text-lg font-black text-neutral">
                       {player.totalGames}
                     </span>
                     <span className="text-[9px] text-neutral/40 font-medium">Jogos</span>
-          </div>
+                  </div>
+
+                  {/* LP Change - Fixed Width */}
+                  <div className="flex flex-col items-center" style={{ width: '70px' }}>
+                    <span className={`text-lg font-black ${
+                      player.lpChange > 0 ? 'text-green-400' : 
+                      player.lpChange < 0 ? 'text-red-400' : 
+                      'text-neutral/50'
+                    }`}>
+                      {player.lpChange > 0 ? '+' : ''}{player.lpChange}
+                    </span>
+                    <span className="text-[9px] text-neutral/40 font-medium">LP</span>
+                  </div>
 
                   {/* Champions - Much Smaller */}
                   <div className="flex items-center gap-1.5 pl-2 border-l border-neutral/10">
@@ -397,8 +528,25 @@ export default function PlayerTable({ players, selectedMonth, onMonthChange }: P
                       </div>
                     ))}
                   </div>
-          </div>
-        </div>
+                </div>
+                
+                {/* Coach Image - Right Side Decoration */}
+                <div className="flex-shrink-0 hidden lg:flex items-stretch ml-4 self-stretch">
+                  <div className="relative w-20 h-full">
+                    <Image
+                      src={COACH_IMAGES[player.role]}
+                      alt={`Coach ${player.role}`}
+                      width={80}
+                      height={80}
+                      className="object-cover rounded-full w-full h-full"
+                      onError={(e) => {
+                        // Hide image if it doesn't exist
+                        e.currentTarget.style.display = 'none'
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
             </motion.div>
           )
         })}
@@ -434,12 +582,12 @@ export default function PlayerTable({ players, selectedMonth, onMonthChange }: P
           <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-green-500/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
           <div className="text-neutral/40 text-xs uppercase tracking-widest mb-5 font-bold">Win Rate</div>
           <div className="text-5xl font-black text-green-400 mb-4 drop-shadow-lg">
-            {(players.reduce((sum, p) => sum + p.winRate, 0) / players.length).toFixed(0)}%
+            {(players.reduce((sum, p) => sum + safeNumber(p.winRate, 0), 0) / players.length).toFixed(0)}%
           </div>
           <div className="h-2.5 bg-dark-bg/40 rounded-full overflow-hidden shadow-inner">
             <motion.div 
               initial={{ width: 0 }}
-              animate={{ width: `${players.reduce((sum, p) => sum + p.winRate, 0) / players.length}%` }}
+              animate={{ width: `${players.reduce((sum, p) => sum + safeNumber(p.winRate, 0), 0) / players.length}%` }}
               transition={{ duration: 1, delay: 0.5, ease: "easeOut" }}
               className="h-full bg-gradient-to-r from-green-500 to-green-400 rounded-full"
             />
@@ -454,12 +602,12 @@ export default function PlayerTable({ players, selectedMonth, onMonthChange }: P
           <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-primary/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
           <div className="text-neutral/40 text-xs uppercase tracking-widest mb-5 font-bold">KDA Médio</div>
           <div className="text-5xl font-black text-primary mb-4 drop-shadow-lg">
-            {(players.reduce((sum, p) => sum + p.kda, 0) / players.length).toFixed(2)}
+            {(players.reduce((sum, p) => sum + safeNumber(p.kda, 0), 0) / players.length).toFixed(2)}
           </div>
           <div className="h-2.5 bg-dark-bg/40 rounded-full overflow-hidden shadow-inner">
             <motion.div 
               initial={{ width: 0 }}
-              animate={{ width: `${Math.min(100, (players.reduce((sum, p) => sum + p.kda, 0) / players.length) * 20)}%` }}
+              animate={{ width: `${Math.min(100, (players.reduce((sum, p) => sum + safeNumber(p.kda, 0), 0) / players.length) * 20)}%` }}
               transition={{ duration: 1, delay: 0.6, ease: "easeOut" }}
               className="h-full bg-gradient-to-r from-primary to-primary-light rounded-full"
             />
@@ -474,12 +622,12 @@ export default function PlayerTable({ players, selectedMonth, onMonthChange }: P
           <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-secondary/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
           <div className="text-neutral/40 text-xs uppercase tracking-widest mb-5 font-bold">CS Médio</div>
           <div className="text-5xl font-black text-secondary mb-4 drop-shadow-lg">
-            {(players.reduce((sum, p) => sum + p.avgCS, 0) / players.length).toFixed(0)}
+            {(players.reduce((sum, p) => sum + safeNumber(p.avgCS, 0), 0) / players.length).toFixed(0)}
           </div>
           <div className="h-2.5 bg-dark-bg/40 rounded-full overflow-hidden shadow-inner">
             <motion.div 
               initial={{ width: 0 }}
-              animate={{ width: `${Math.min(100, (players.reduce((sum, p) => sum + p.avgCS, 0) / players.length) / 2.5)}%` }}
+              animate={{ width: `${Math.min(100, (players.reduce((sum, p) => sum + safeNumber(p.avgCS, 0), 0) / players.length) / 2.5)}%` }}
               transition={{ duration: 1, delay: 0.7, ease: "easeOut" }}
               className="h-full bg-gradient-to-r from-secondary to-secondary-light rounded-full"
           />

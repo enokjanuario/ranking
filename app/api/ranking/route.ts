@@ -1,7 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { TRACKED_PLAYERS } from '@/lib/constants'
 import { getAccountByRiotId, calculatePlayerStats, rankPlayers } from '@/lib/riotApi'
-import { getCache, setCache, initCache, acquireUpdateLock, releaseUpdateLock, isUpdateInProgress, waitForUpdate } from '@/lib/cache-redis'
+import { 
+  getCache, 
+  setCache, 
+  getStagingCache,
+  setStagingCache,
+  promoteStagingToMain,
+  getCacheOrStaging,
+  initCache, 
+  acquireUpdateLock, 
+  releaseUpdateLock, 
+  isUpdateInProgress, 
+  waitForUpdate 
+} from '@/lib/cache-redis'
+import { startProcess, endProcess, startStep, trackError, log, logProgress } from '@/lib/requestTracker'
 
 // Force dynamic rendering for this API route
 export const dynamic = 'force-dynamic'
@@ -9,49 +22,148 @@ export const dynamic = 'force-dynamic'
 // Inicializar cache ao carregar o módulo
 initCache()
 
+// Função para atualizar staging em background (não bloqueia resposta)
+async function updateStagingInBackground(
+  monthParam: string,
+  startTime: number,
+  endTime: number,
+  period: { start: string; end: string }
+): Promise<void> {
+  const tracker = startProcess(`Background Update - ${monthParam}`)
+  
+  try {
+    startStep('Adquirir lock')
+    const lockAcquired = await acquireUpdateLock(monthParam)
+    
+    if (!lockAcquired) {
+      log(`Não foi possível atualizar staging para ${monthParam} (lock em uso)`, '⏸️')
+      return
+    }
+    
+    startStep('Buscar dados frescos')
+    const rankedPlayers = await fetchFreshData(monthParam, startTime, endTime)
+    
+    startStep('Salvar staging cache')
+    await setStagingCache(monthParam, rankedPlayers, period)
+    
+    log(`Staging cache atualizado em background para ${monthParam}`, '✅')
+  } catch (error: any) {
+    trackError('Background Update', error)
+  } finally {
+    await releaseUpdateLock(monthParam)
+    endProcess()
+  }
+}
+
 // Função para buscar dados frescos da API
 async function fetchFreshData(monthParam: string, startTime: number, endTime: number) {
-  console.log(`🔄 Buscando dados frescos para ${monthParam}...`)
+  startStep('Buscar accounts')
+  log(`Buscando accounts para ${TRACKED_PLAYERS.length} jogadores...`, '📥')
   
-  // Fetch data for all tracked players
-  const playerPromises = TRACKED_PLAYERS.map(async (riotId) => {
-    try {
-      // Get account info
-      const account = await getAccountByRiotId(riotId)
-      
-      if (!account) {
-        console.log(`Account not found for ${riotId}`)
+  const accountPromises = TRACKED_PLAYERS.map(riotId => getAccountByRiotId(riotId))
+  const accounts = await Promise.all(accountPromises)
+  
+  // Mapear accounts para puuids e identificar quais não foram encontrados
+  const playerData = TRACKED_PLAYERS.map((riotId, index) => ({
+    riotId,
+    account: accounts[index],
+  }))
+  
+  const foundAccounts = playerData.filter(p => p.account !== null)
+  const missingAccounts = playerData.filter(p => p.account === null)
+  
+  log(`${foundAccounts.length}/${TRACKED_PLAYERS.length} accounts encontrados`, '✅')
+  
+  if (missingAccounts.length > 0) {
+    log(`⚠️ Accounts não encontrados: ${missingAccounts.map(p => p.riotId).join(', ')}`, '⚠️')
+  }
+  
+  const filteredPlayerData = foundAccounts
+  
+  if (filteredPlayerData.length === 0) {
+    log('Nenhum account encontrado, abortando', '⚠️')
+    return []
+  }
+  
+  // OTIMIZAÇÃO: Processar jogadores em paralelo (mas com controle de concorrência)
+  // Processar em batches de 4 para melhor performance (aumentado de 2)
+  startStep('Processar estatísticas dos jogadores')
+  log(`Processando ${filteredPlayerData.length} jogadores em batches de 4...`, '🔄')
+  
+  const playerResults: Array<Omit<PlayerStats, 'position' | 'previousPosition'> | null> = []
+  const batchSize = 4
+  
+  for (let i = 0; i < filteredPlayerData.length; i += batchSize) {
+    const batch = filteredPlayerData.slice(i, i + batchSize)
+    const batchNum = Math.floor(i / batchSize) + 1
+    const totalBatches = Math.ceil(filteredPlayerData.length / batchSize)
+    
+    log(`Processando batch ${batchNum}/${totalBatches} (${batch.map(p => p.riotId).join(', ')})`, '📦')
+    
+    const batchPromises = batch.map(async ({ riotId, account }) => {
+      try {
+        if (!account) {
+          log(`Account not found for ${riotId}`, '⚠️')
+          return null
+        }
+
+        // Calculate stats
+        const stats = await calculatePlayerStats(riotId, account.puuid, startTime, endTime)
+        return stats
+      } catch (error: any) {
+        trackError(`Processar ${riotId}`, error)
         return null
       }
-
-      // Calculate stats
-      const stats = await calculatePlayerStats(riotId, account.puuid, startTime, endTime)
-      
-      return stats
-    } catch (error) {
-      console.error(`Error processing player ${riotId}:`, error)
-      return null
+    })
+    
+    const batchResults = await Promise.all(batchPromises)
+    playerResults.push(...batchResults)
+    
+    logProgress(i + batchResults.length, filteredPlayerData.length, 'jogadores')
+    
+    // Pequeno delay entre batches para não sobrecarregar
+    if (i + batchSize < filteredPlayerData.length) {
+      await new Promise(resolve => setTimeout(resolve, 100))
     }
-  })
+  }
 
-  const playerResults = await Promise.all(playerPromises)
   const validPlayers = playerResults.filter(p => p !== null)
+  const failedPlayers = filteredPlayerData.filter((_, index) => playerResults[index] === null)
+  
+  log(`${validPlayers.length}/${filteredPlayerData.length} jogadores processados com sucesso`, '✅')
+  
+  if (failedPlayers.length > 0) {
+    log(`⚠️ Jogadores que falharam no processamento: ${failedPlayers.map(p => p.riotId).join(', ')}`, '⚠️')
+  }
+  
+  if (validPlayers.length < TRACKED_PLAYERS.length) {
+    const totalMissing = TRACKED_PLAYERS.length - validPlayers.length
+    log(`⚠️ ATENÇÃO: ${totalMissing} de ${TRACKED_PLAYERS.length} jogadores não aparecerão na lista`, '⚠️')
+  }
 
   // Rank players
+  startStep('Rankear jogadores')
   const rankedPlayers = rankPlayers(validPlayers as any)
+  log(`${rankedPlayers.length} jogadores rankeados`, '✅')
   
   return rankedPlayers
 }
 
 export async function GET(request: NextRequest) {
+  const tracker = startProcess('Ranking API Request')
+  
   try {
+    startStep('Validar parâmetros')
     const searchParams = request.nextUrl.searchParams
     const monthParam = searchParams.get('month')
     const forceRefresh = searchParams.get('force') === 'true' // Parâmetro para forçar atualização
 
     if (!monthParam) {
+      trackError('Validação', 'Month parameter is required')
       return NextResponse.json({ success: false, error: 'Month parameter is required' }, { status: 400 })
     }
+
+    log(`Mês solicitado: ${monthParam}${forceRefresh ? ' (forçar atualização)' : ''}`, '📅')
 
     // Parse month parameter (format: YYYY-MM)
     const [year, month] = monthParam.split('-').map(Number)
@@ -65,60 +177,135 @@ export async function GET(request: NextRequest) {
       end: new Date(endTime).toISOString(),
     }
 
-    // Verificar cache primeiro (a menos que forceRefresh seja true)
+    // DOUBLE BUFFERING: Verificar cache principal ou staging
     if (!forceRefresh) {
-      const cachedData = await getCache(monthParam)
+      startStep('Verificar cache')
+      const cacheResult = await getCacheOrStaging(monthParam)
       
-      if (cachedData) {
-        console.log(`✅ Retornando dados do cache para ${monthParam}`)
+      if (cacheResult.data) {
+        log(`Cache encontrado: ${cacheResult.source}${cacheResult.isExpired ? ' (expirado)' : ''}`, '✅')
+        
+        // Se veio do staging e principal expirou, promover staging para principal
+        if (cacheResult.source === 'staging' && cacheResult.isExpired) {
+          startStep('Promover staging para principal')
+          // Promover em background (não bloquear resposta)
+          promoteStagingToMain(monthParam).catch(err => 
+            trackError('Promover staging', err)
+          )
+        }
+        
+        // PRE-WARMING: Se cache principal está próximo de expirar (menos de 3 minutos),
+        // iniciar atualização do staging em background
+        if (cacheResult.source === 'main' && !cacheResult.isExpired) {
+          const cacheAge = Date.now() - cacheResult.data.timestamp
+          const PRE_WARM_THRESHOLD = 12 * 60 * 1000 // 12 minutos (3 min antes de expirar)
+          
+          if (cacheAge > PRE_WARM_THRESHOLD) {
+            startStep('Pre-warming staging cache')
+            // Verificar se staging já existe e está atualizado
+            const stagingCache = await getStagingCache(monthParam)
+            const stagingAge = stagingCache ? Date.now() - stagingCache.timestamp : Infinity
+            
+            // Se staging não existe ou está mais antigo que o principal, atualizar em background
+            if (!stagingCache || stagingAge > cacheAge) {
+              // Iniciar atualização em background (não bloquear resposta)
+              if (!(await isUpdateInProgress(monthParam))) {
+                log(`Pre-warming staging cache (principal expira em breve)`, '🔥')
+                updateStagingInBackground(monthParam, startTime, endTime, period).catch(err =>
+                  trackError('Pre-warming', err)
+                )
+              }
+            }
+          }
+        }
+        
+        endProcess()
         return NextResponse.json({
           success: true,
-          players: cachedData.players,
-          period: cachedData.period,
+          players: cacheResult.data.players,
+          period: cacheResult.data.period,
           cached: true,
-          cachedAt: new Date(cachedData.timestamp).toISOString(),
+          cachedAt: new Date(cacheResult.data.timestamp).toISOString(),
+          source: cacheResult.source,
+          isStale: cacheResult.isExpired,
         })
+      } else {
+        log('Cache não encontrado, buscando dados frescos', '🔄')
       }
     } else {
-      console.log(`🔄 Forçando atualização para ${monthParam}`)
+      log(`Forçando atualização para ${monthParam}`, '🔄')
     }
 
+    // Se chegou aqui, não há cache válido nem staging
     // Verificar se já há uma atualização em progresso
-    if (await isUpdateInProgress(monthParam)) {
-      console.log(`⏸️  Atualização já em progresso para ${monthParam}, aguardando...`)
+    startStep('Verificar atualização em progresso')
+    const updateInProgress = await isUpdateInProgress(monthParam)
+    
+    if (updateInProgress) {
+      log(`Atualização já em progresso para ${monthParam}, aguardando...`, '⏸️')
       
       // Aguardar a atualização em progresso terminar
       await waitForUpdate(monthParam)
       
-      // Tentar pegar do cache novamente
-      const cachedData = await getCache(monthParam)
-      if (cachedData) {
+      startStep('Buscar cache após espera')
+      // Tentar pegar do cache ou staging novamente
+      const cacheResult = await getCacheOrStaging(monthParam)
+      if (cacheResult.data) {
+        // Promover staging se necessário
+        if (cacheResult.source === 'staging' && cacheResult.isExpired) {
+          await promoteStagingToMain(monthParam)
+          // Tentar pegar do principal novamente
+          const mainCache = await getCache(monthParam)
+          if (mainCache) {
+            endProcess()
+            return NextResponse.json({
+              success: true,
+              players: mainCache.players,
+              period: mainCache.period,
+              cached: true,
+              cachedAt: new Date(mainCache.timestamp).toISOString(),
+              source: 'main',
+              waitedForUpdate: true,
+            })
+          }
+        }
+        
+        endProcess()
         return NextResponse.json({
           success: true,
-          players: cachedData.players,
-          period: cachedData.period,
+          players: cacheResult.data.players,
+          period: cacheResult.data.period,
           cached: true,
-          cachedAt: new Date(cachedData.timestamp).toISOString(),
+          cachedAt: new Date(cacheResult.data.timestamp).toISOString(),
+          source: cacheResult.source,
           waitedForUpdate: true,
         })
       }
     }
 
     // Tentar adquirir lock para atualização
-    if (!(await acquireUpdateLock(monthParam))) {
-      // Se não conseguir lock, retornar cache (mesmo expirado) ou erro
-      const cachedData = await getCache(monthParam)
-      if (cachedData) {
+    startStep('Adquirir lock de atualização')
+    const lockAcquired = await acquireUpdateLock(monthParam)
+    
+    if (!lockAcquired) {
+      log('Não foi possível adquirir lock, tentando retornar cache expirado', '⚠️')
+      // Se não conseguir lock, tentar retornar staging ou cache expirado
+      const cacheResult = await getCacheOrStaging(monthParam)
+      if (cacheResult.data) {
+        endProcess()
         return NextResponse.json({
           success: true,
-          players: cachedData.players,
-          period: cachedData.period,
+          players: cacheResult.data.players,
+          period: cacheResult.data.period,
           cached: true,
           stale: true,
-          cachedAt: new Date(cachedData.timestamp).toISOString(),
+          cachedAt: new Date(cacheResult.data.timestamp).toISOString(),
+          source: cacheResult.source,
         })
       }
       
+      trackError('Lock', 'Update in progress, please try again')
+      endProcess()
       return NextResponse.json(
         { success: false, error: 'Update in progress, please try again' },
         { status: 503 }
@@ -126,26 +313,35 @@ export async function GET(request: NextRequest) {
     }
 
     try {
-      // Se não houver cache válido, buscar dados frescos
-      console.log(`🚀 Iniciando busca de dados para ${monthParam}`)
+      // Buscar dados frescos e salvar em STAGING primeiro
+      log(`Iniciando busca de dados para ${monthParam} (salvando em staging)`, '🚀')
       const rankedPlayers = await fetchFreshData(monthParam, startTime, endTime)
 
-      // Salvar no cache
-      await setCache(monthParam, rankedPlayers, period)
+      // Salvar no staging cache primeiro
+      startStep('Salvar staging cache')
+      await setStagingCache(monthParam, rankedPlayers, period)
+      
+      // Promover staging para principal imediatamente
+      startStep('Promover staging para principal')
+      await promoteStagingToMain(monthParam)
 
+      endProcess()
       return NextResponse.json({
         success: true,
         players: rankedPlayers,
         period,
         cached: false,
         updatedAt: new Date().toISOString(),
+        source: 'main',
       })
     } finally {
       // Sempre liberar o lock, mesmo se houver erro
+      startStep('Liberar lock')
       await releaseUpdateLock(monthParam)
     }
   } catch (error: any) {
-    console.error('Error in ranking API:', error)
+    trackError('Ranking API', error)
+    endProcess()
     return NextResponse.json(
       { success: false, error: error.message || 'Internal server error' },
       { status: 500 }

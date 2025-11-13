@@ -5,10 +5,14 @@ export const TRACKED_PLAYERS = [
   'Dorrows#0488',
   'Atziluth#537',
   'Gordaker#prata',
-  'KallaKvothe#br1',
-  'Josedeodo#NA12',
-  // Adicione mais 12 jogadores aqui quando quiser expandir
-  // Por enquanto, você pode começar só com essas 3 contas acima
+  // Novos jogadores
+  'magnum opus#1512',
+  'Bom E Novo#7177',
+  'lopesdadz7#bubux',
+  'Japhie#br1',
+  'DiscipuloDaMorte#br1',
+  'Arkhanos#BR1',
+  // Adicione mais jogadores aqui quando quiser expandir
   // Exemplos:
   // 'OutroJogador#BR1',
   // 'MaisUm#BR1',
@@ -27,8 +31,13 @@ export const PLAYER_ROLES: Record<string, 'top' | 'jungle' | 'mid' | 'bot' | 'su
   'Dorrows#0488': 'mid',
   'Atziluth#537': 'mid',
   'Gordaker#prata': 'mid',
-  'KallaKvothe#br1': 'suporte',
-  'Josedeodo#NA12': 'jungle',
+  // Novos jogadores
+  'magnum opus#1512': 'top',
+  'Bom E Novo#7177': 'jungle',
+  'lopesdadz7#bubux': 'mid',
+  'Japhie#br1': 'suporte',
+  'DiscipuloDaMorte#br1': 'suporte',
+  'Arkhanos#BR1': 'jungle',
   // Adicione mais roles aqui conforme necessário
   // 'RiotID#TAG': 'role',
 }

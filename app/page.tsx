@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Header from '@/components/Header'
 import PlayerTable from '@/components/PlayerTable'
 import LoadingSpinner from '@/components/LoadingSpinner'
@@ -17,31 +17,11 @@ export default function Home() {
   const [nextUpdateIn, setNextUpdateIn] = useState<number>(0)
 
   useEffect(() => {
-    // Set current month as default
-    const now = new Date()
-    const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-    setSelectedMonth(monthStr)
+    // Set November 2025 as default
+    setSelectedMonth('2025-11')
   }, [])
 
-  useEffect(() => {
-    if (selectedMonth) {
-      fetchRankingData()
-    }
-  }, [selectedMonth])
-
-  // Auto-refresh every 16 minutes (slightly more than cache duration)
-  // to ensure we always get fresh data after cache expires
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (selectedMonth) {
-        fetchRankingData(true)
-      }
-    }, 16 * 60 * 1000) // 16 minutes
-
-    return () => clearInterval(interval)
-  }, [selectedMonth])
-
-  const fetchRankingData = async (silent = false) => {
+  const fetchRankingData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
     
     try {
@@ -65,14 +45,37 @@ export default function Home() {
         }
         setDataTimestamp(timestamp)
         
-        // Calculate seconds until next update (15 minutes = 900 seconds)
-        if (data.cached || data.updatedAt) {
-          const cacheAge = (Date.now() - timestamp.getTime()) / 1000 // segundos desde a atualização
-          const remainingSeconds = Math.max(0, 900 - cacheAge) // 900 segundos = 15 minutos
-          setNextUpdateIn(remainingSeconds)
+        // Calcular tempo até próxima atualização (horários terminados em 00, 15, 30, 45)
+        const now = new Date()
+        const currentMinutes = now.getMinutes()
+        
+        // Encontrar próximo múltiplo de 15 minutos
+        let nextUpdateMinutes: number
+        if (currentMinutes < 15) {
+          nextUpdateMinutes = 15
+        } else if (currentMinutes < 30) {
+          nextUpdateMinutes = 30
+        } else if (currentMinutes < 45) {
+          nextUpdateMinutes = 45
         } else {
-          setNextUpdateIn(900)
+          nextUpdateMinutes = 60 // Próxima hora (00)
         }
+        
+        // Criar data do próximo horário de atualização
+        const nextUpdateTime = new Date(now)
+        nextUpdateTime.setMinutes(nextUpdateMinutes)
+        nextUpdateTime.setSeconds(0)
+        nextUpdateTime.setMilliseconds(0)
+        
+        // Se passou dos 45, ir para próxima hora
+        if (nextUpdateMinutes === 60) {
+          nextUpdateTime.setHours(nextUpdateTime.getHours() + 1)
+          nextUpdateTime.setMinutes(0)
+        }
+        
+        // Calcular diferença em segundos
+        const remainingSeconds = Math.max(0, Math.floor((nextUpdateTime.getTime() - now.getTime()) / 1000))
+        setNextUpdateIn(remainingSeconds)
       } else {
         console.error('Failed to fetch ranking data:', data.error)
       }
@@ -81,7 +84,69 @@ export default function Home() {
     } finally {
       if (!silent) setLoading(false)
     }
-  }
+  }, [selectedMonth])
+
+  useEffect(() => {
+    if (selectedMonth) {
+      fetchRankingData()
+    }
+  }, [selectedMonth, fetchRankingData])
+
+  // Auto-refresh nos horários :00, :15, :30, :45
+  useEffect(() => {
+    if (!selectedMonth) return
+
+    // Função para calcular próximo horário de atualização
+    const getNextUpdateTime = (): number => {
+      const now = new Date()
+      const currentMinutes = now.getMinutes()
+      
+      let nextUpdateMinutes: number
+      if (currentMinutes < 15) {
+        nextUpdateMinutes = 15
+      } else if (currentMinutes < 30) {
+        nextUpdateMinutes = 30
+      } else if (currentMinutes < 45) {
+        nextUpdateMinutes = 45
+      } else {
+        nextUpdateMinutes = 60 // Próxima hora (00)
+      }
+      
+      const nextUpdateTime = new Date(now)
+      nextUpdateTime.setMinutes(nextUpdateMinutes)
+      nextUpdateTime.setSeconds(0)
+      nextUpdateTime.setMilliseconds(0)
+      
+      if (nextUpdateMinutes === 60) {
+        nextUpdateTime.setHours(nextUpdateTime.getHours() + 1)
+        nextUpdateTime.setMinutes(0)
+      }
+      
+      return nextUpdateTime.getTime() - now.getTime()
+    }
+
+    // Calcular tempo até próxima atualização
+    let timeoutId: NodeJS.Timeout | null = null
+    
+    const scheduleNextUpdate = () => {
+      const delay = getNextUpdateTime()
+      
+      // Se já passou do horário, agendar para o próximo
+      timeoutId = setTimeout(() => {
+        fetchRankingData(true)
+        // Agendar próxima atualização
+        scheduleNextUpdate()
+      }, delay)
+    }
+
+    scheduleNextUpdate()
+    
+    return () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+      }
+    }
+  }, [selectedMonth, fetchRankingData])
 
   const handleMonthChange = (month: string) => {
     setSelectedMonth(month)

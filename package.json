@@ -11,6 +11,7 @@
     "docs:build": "node scripts/build-docs.js"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.81.1",
     "@upstash/redis": "^1.35.6",
     "axios": "^1.6.0",
     "date-fns": "^2.30.0",
