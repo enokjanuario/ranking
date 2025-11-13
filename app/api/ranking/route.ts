@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { TRACKED_PLAYERS } from '@/lib/constants'
 import { getAccountByRiotId, calculatePlayerStats, rankPlayers } from '@/lib/riotApi'
+import { PlayerStats } from '@/types'
 import { 
   getCache, 
   setCache, 
