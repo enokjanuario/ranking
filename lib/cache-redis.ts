@@ -167,7 +167,7 @@ export async function promoteStagingToMain(month: string): Promise<boolean> {
 }
 
 // Obter cache principal ou staging se principal expirou
-export async function getCacheOrStaging(month: string): Promise<{
+export async function getCacheOrStaging(month: string, allowExpired: boolean = false): Promise<{
   data: CacheData | null
   source: 'main' | 'staging' | null
   isExpired: boolean
@@ -178,20 +178,33 @@ export async function getCacheOrStaging(month: string): Promise<{
     if (mainCache) {
       return { data: mainCache, source: 'main', isExpired: false }
     }
-    
-    // 2. Se principal expirou ou não existe, verificar staging
+
+    // 2. Se principal expirou mas allowExpired=true, retornar mesmo expirado (stale-while-revalidate)
+    if (allowExpired) {
+      const key = `${CACHE_KEY_PREFIX}${month}`
+      const expiredCache = await redis.get<CacheData>(key)
+
+      if (expiredCache && validateCacheData(expiredCache)) {
+        const age = Date.now() - expiredCache.timestamp
+        const ageMinutes = Math.round(age / 1000 / 60)
+        console.log(`⚠️ Retornando cache expirado para ${month} (idade: ${ageMinutes}min, stale-while-revalidate)`)
+        return { data: expiredCache, source: 'main', isExpired: true }
+      }
+    }
+
+    // 3. Se principal expirou ou não existe, verificar staging
     const stagingCache = await getStagingCache(month)
     if (stagingCache) {
       // Verificar se staging está completo (tem todos os jogadores esperados)
       // Por enquanto, assumimos que staging está completo se tem pelo menos 1 jogador
       const isComplete = stagingCache.players.length > 0
-      
+
       if (isComplete) {
         console.log(`📦 Usando staging cache para ${month} (principal expirado)`)
         return { data: stagingCache, source: 'staging', isExpired: true }
       }
     }
-    
+
     return { data: null, source: null, isExpired: true }
   } catch (error) {
     console.error(`❌ Erro ao obter cache ou staging para ${month}:`, error)
