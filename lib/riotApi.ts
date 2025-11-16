@@ -335,7 +335,8 @@ export async function calculatePlayerStats(
     log(`Iniciando busca de stats para ${riotId}`, '👤')
     
     // OTIMIZAÇÃO 1: Verificar se já temos stats pré-calculadas no Supabase
-    if (isSupabaseConfigured()) {
+    // Só faz sentido para ranking mensal (com startTime/endTime definidos)
+    if (isSupabaseConfigured() && startTime && endTime) {
       const monthStr = `${new Date(startTime).getFullYear()}-${String(new Date(startTime).getMonth() + 1).padStart(2, '0')}`
       log(`Verificando stats pré-calculadas no Supabase para ${monthStr}...`, '🗄️')
       
@@ -440,7 +441,9 @@ export async function calculatePlayerStats(
           const currentRank = await getCurrentRankByPuuid(puuid)
           
           // Calcular LP change usando snapshots
-          const monthStr = `${new Date(startTime).getFullYear()}-${String(new Date(startTime).getMonth() + 1).padStart(2, '0')}`
+          // Para ranking geral (sem startTime), usar mês atual
+          const now = startTime ? new Date(startTime) : new Date()
+          const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
           let previousRank = await getRankSnapshot(puuid, monthStr)
           
           if (!previousRank && currentRank) {
@@ -759,7 +762,9 @@ export async function calculatePlayerStats(
     
     // Calculate REAL LP change using rank snapshots
     log(`Calculando mudança de LP usando snapshots...`, '📊')
-    const monthStr = `${new Date(startTime).getFullYear()}-${String(new Date(startTime).getMonth() + 1).padStart(2, '0')}`
+    // Para ranking geral (sem startTime), usar mês atual
+    const now = startTime ? new Date(startTime) : new Date()
+    const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
     
     // Buscar snapshot do início do período (agora async)
     let previousRank = await getRankSnapshot(puuid, monthStr)
@@ -876,7 +881,9 @@ export async function calculatePlayerStats(
     // Isso é melhor do que não mostrar nada
     if (isSupabaseConfigured()) {
       try {
-        const monthStr = `${new Date(startTime).getFullYear()}-${String(new Date(startTime).getMonth() + 1).padStart(2, '0')}`
+        // Para ranking geral (sem startTime), usar mês atual
+        const now = startTime ? new Date(startTime) : new Date()
+        const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
         log(`Tentando fallback final: buscar stats antigos do Supabase para ${monthStr}...`, '🔄')
 
         const cachedStats = await getMonthlyStats(puuid, monthStr)
