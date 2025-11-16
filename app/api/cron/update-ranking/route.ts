@@ -179,8 +179,10 @@ export async function GET(request: NextRequest) {
         end: new Date(endTime).toISOString(),
       }
     } else {
+      // Ranking geral: últimos 30 dias
+      const thirtyDaysAgo = new Date(Date.now() - (30 * 24 * 60 * 60 * 1000))
       period = {
-        start: 'all-time',
+        start: thirtyDaysAgo.toISOString(),
         end: 'current',
       }
     }

@@ -480,9 +480,10 @@ export async function calculatePlayerStats(
     const isGeneralRanking = !startTime && !endTime
 
     if (isGeneralRanking) {
-      // Ranking geral: buscar últimas 100 partidas ranqueadas
-      log(`Buscando últimas 100 partidas para ranking geral...`, '🔄')
-      matchIds = await getMatchHistory(puuid, undefined, undefined, 100)
+      // Ranking geral: buscar partidas dos últimos 30 dias (sem limite de quantidade)
+      const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000)
+      log(`Buscando partidas dos últimos 30 dias para ranking geral...`, '🔄')
+      matchIds = await getMatchHistory(puuid, thirtyDaysAgo, undefined, 1000) // Max 1000 para segurança
     } else if (isSupabaseConfigured() && startTime && endTime) {
       // Ranking mensal: verificar cache primeiro
       log(`Verificando cache de match history no Supabase...`, '🗄️')
