@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "docs": "npx http-server docs -p 8080",
-    "docs:build": "node scripts/build-docs.js"
+    "docs:build": "node scripts/build-docs.js",
+    "seed-matches": "tsx scripts/seed-matches.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.81.1",
