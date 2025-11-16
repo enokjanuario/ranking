@@ -199,7 +199,7 @@ export async function GET(request: NextRequest) {
         if (cacheResult.source === 'staging' && cacheResult.isExpired) {
           startStep('Promover staging para principal')
           // Promover em background (não bloquear resposta)
-          promoteStagingToMain(monthParam).catch(err => 
+          promoteStagingToMain(cacheKey).catch(err =>
             trackError('Promover staging', err)
           )
         }
