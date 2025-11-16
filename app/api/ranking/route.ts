@@ -26,9 +26,9 @@ initCache()
 // Função para atualizar staging em background (não bloqueia resposta)
 async function updateStagingInBackground(
   monthParam: string,
-  startTime: number,
-  endTime: number,
-  period: { start: string; end: string }
+  startTime?: number,
+  endTime?: number,
+  period?: { start: string; end: string }
 ): Promise<void> {
   const tracker = startProcess(`Background Update - ${monthParam}`)
   
@@ -45,7 +45,7 @@ async function updateStagingInBackground(
     const rankedPlayers = await fetchFreshData(monthParam, startTime, endTime)
     
     startStep('Salvar staging cache')
-    await setStagingCache(monthParam, rankedPlayers, period)
+    await setStagingCache(monthParam, rankedPlayers, period || { start: 'all-time', end: 'current' })
     
     log(`Staging cache atualizado em background para ${monthParam}`, '✅')
   } catch (error: any) {
@@ -57,7 +57,7 @@ async function updateStagingInBackground(
 }
 
 // Função para buscar dados frescos da API
-async function fetchFreshData(monthParam: string, startTime: number, endTime: number) {
+async function fetchFreshData(monthParam: string, startTime?: number, endTime?: number) {
   startStep('Buscar accounts')
   log(`Buscando accounts para ${TRACKED_PLAYERS.length} jogadores...`, '📥')
   
@@ -152,36 +152,44 @@ async function fetchFreshData(monthParam: string, startTime: number, endTime: nu
 
 export async function GET(request: NextRequest) {
   const tracker = startProcess('Ranking API Request')
-  
+
   try {
     startStep('Validar parâmetros')
     const searchParams = request.nextUrl.searchParams
     const monthParam = searchParams.get('month')
     const forceRefresh = searchParams.get('force') === 'true' // Parâmetro para forçar atualização
 
-    if (!monthParam) {
-      trackError('Validação', 'Month parameter is required')
-      return NextResponse.json({ success: false, error: 'Month parameter is required' }, { status: 400 })
-    }
+    // Se não especificar mês, usar "current" (ranking geral das últimas 100 partidas)
+    const cacheKey = monthParam || 'current'
+    const isGeneralRanking = !monthParam
 
-    log(`Mês solicitado: ${monthParam}${forceRefresh ? ' (forçar atualização)' : ''}`, '📅')
+    log(`${isGeneralRanking ? 'Ranking geral' : `Mês solicitado: ${monthParam}`}${forceRefresh ? ' (forçar atualização)' : ''}`, '📅')
 
-    // Parse month parameter (format: YYYY-MM)
-    const [year, month] = monthParam.split('-').map(Number)
-    
-    // Calculate start and end timestamps for the month
-    const startTime = new Date(year, month - 1, 1).getTime()
-    const endTime = new Date(year, month, 0, 23, 59, 59, 999).getTime()
+    // Parse month parameter (format: YYYY-MM) ou usar undefined para ranking geral
+    let startTime: number | undefined
+    let endTime: number | undefined
+    let period: { start: string; end: string }
 
-    const period = {
-      start: new Date(startTime).toISOString(),
-      end: new Date(endTime).toISOString(),
+    if (monthParam) {
+      const [year, month] = monthParam.split('-').map(Number)
+      startTime = new Date(year, month - 1, 1).getTime()
+      endTime = new Date(year, month, 0, 23, 59, 59, 999).getTime()
+      period = {
+        start: new Date(startTime).toISOString(),
+        end: new Date(endTime).toISOString(),
+      }
+    } else {
+      // Ranking geral: sem filtro de período
+      period = {
+        start: 'all-time',
+        end: 'current',
+      }
     }
 
     // DOUBLE BUFFERING: Verificar cache principal ou staging
     if (!forceRefresh) {
       startStep('Verificar cache')
-      const cacheResult = await getCacheOrStaging(monthParam)
+      const cacheResult = await getCacheOrStaging(cacheKey)
       
       if (cacheResult.data) {
         log(`Cache encontrado: ${cacheResult.source}${cacheResult.isExpired ? ' (expirado)' : ''}`, '✅')
@@ -200,19 +208,19 @@ export async function GET(request: NextRequest) {
         if (cacheResult.source === 'main' && !cacheResult.isExpired) {
           const cacheAge = Date.now() - cacheResult.data.timestamp
           const PRE_WARM_THRESHOLD = 8 * 60 * 1000 // 8 minutos (7 min antes de expirar)
-          
+
           if (cacheAge > PRE_WARM_THRESHOLD) {
             startStep('Pre-warming staging cache')
             // Verificar se staging já existe e está atualizado
-            const stagingCache = await getStagingCache(monthParam)
+            const stagingCache = await getStagingCache(cacheKey)
             const stagingAge = stagingCache ? Date.now() - stagingCache.timestamp : Infinity
-            
+
             // Se staging não existe ou está mais antigo que o principal, atualizar em background
             if (!stagingCache || stagingAge > cacheAge) {
               // Iniciar atualização em background (não bloquear resposta)
-              if (!(await isUpdateInProgress(monthParam))) {
+              if (!(await isUpdateInProgress(cacheKey))) {
                 log(`Pre-warming staging cache (principal expira em breve)`, '🔥')
-                updateStagingInBackground(monthParam, startTime, endTime, period).catch(err =>
+                updateStagingInBackground(cacheKey, startTime, endTime, period).catch(err =>
                   trackError('Pre-warming', err)
                 )
               }
@@ -240,14 +248,14 @@ export async function GET(request: NextRequest) {
     // Se chegou aqui, não há cache válido nem staging
     // Verificar se já há uma atualização em progresso
     startStep('Verificar atualização em progresso')
-    const updateInProgress = await isUpdateInProgress(monthParam)
+    const updateInProgress = await isUpdateInProgress(cacheKey)
 
     if (updateInProgress) {
-      log(`Atualização já em progresso para ${monthParam}`, '⏸️')
+      log(`Atualização já em progresso para ${cacheKey}`, '⏸️')
 
       // STALE-WHILE-REVALIDATE: Tentar retornar cache expirado imediatamente
       // ao invés de aguardar a atualização terminar
-      const expiredCacheResult = await getCacheOrStaging(monthParam, true)
+      const expiredCacheResult = await getCacheOrStaging(cacheKey, true)
 
       if (expiredCacheResult.data) {
         log(`Retornando cache expirado enquanto atualização está em progresso (stale-while-revalidate)`, '⚡')
@@ -266,17 +274,17 @@ export async function GET(request: NextRequest) {
 
       // Se não tiver cache expirado, aguardar a atualização terminar
       log(`Cache expirado não disponível, aguardando atualização terminar...`, '⏳')
-      await waitForUpdate(monthParam)
+      await waitForUpdate(cacheKey)
 
       startStep('Buscar cache após espera')
       // Tentar pegar do cache ou staging novamente
-      const cacheResult = await getCacheOrStaging(monthParam)
+      const cacheResult = await getCacheOrStaging(cacheKey)
       if (cacheResult.data) {
         // Promover staging se necessário
         if (cacheResult.source === 'staging' && cacheResult.isExpired) {
-          await promoteStagingToMain(monthParam)
+          await promoteStagingToMain(cacheKey)
           // Tentar pegar do principal novamente
-          const mainCache = await getCache(monthParam)
+          const mainCache = await getCache(cacheKey)
           if (mainCache) {
             endProcess()
             return NextResponse.json({
@@ -306,12 +314,12 @@ export async function GET(request: NextRequest) {
 
     // Tentar adquirir lock para atualização
     startStep('Adquirir lock de atualização')
-    const lockAcquired = await acquireUpdateLock(monthParam)
+    const lockAcquired = await acquireUpdateLock(cacheKey)
 
     if (!lockAcquired) {
       log('Não foi possível adquirir lock, tentando retornar cache expirado (stale-while-revalidate)', '⚠️')
       // Se não conseguir lock, tentar retornar staging ou cache expirado
-      const cacheResult = await getCacheOrStaging(monthParam, true) // allowExpired=true
+      const cacheResult = await getCacheOrStaging(cacheKey, true) // allowExpired=true
       if (cacheResult.data) {
         endProcess()
         return NextResponse.json({
@@ -336,16 +344,16 @@ export async function GET(request: NextRequest) {
 
     try {
       // Buscar dados frescos e salvar em STAGING primeiro
-      log(`Iniciando busca de dados para ${monthParam} (salvando em staging)`, '🚀')
-      const rankedPlayers = await fetchFreshData(monthParam, startTime, endTime)
+      log(`Iniciando busca de dados para ${cacheKey} (salvando em staging)`, '🚀')
+      const rankedPlayers = await fetchFreshData(cacheKey, startTime, endTime)
 
       // Salvar no staging cache primeiro
       startStep('Salvar staging cache')
-      await setStagingCache(monthParam, rankedPlayers, period)
-      
+      await setStagingCache(cacheKey, rankedPlayers, period)
+
       // Promover staging para principal imediatamente
       startStep('Promover staging para principal')
-      await promoteStagingToMain(monthParam)
+      await promoteStagingToMain(cacheKey)
 
       endProcess()
       return NextResponse.json({
@@ -359,7 +367,7 @@ export async function GET(request: NextRequest) {
     } finally {
       // Sempre liberar o lock, mesmo se houver erro
       startStep('Liberar lock')
-      await releaseUpdateLock(monthParam)
+      await releaseUpdateLock(cacheKey)
     }
   } catch (error: any) {
     trackError('Ranking API', error)

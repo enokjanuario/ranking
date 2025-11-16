@@ -234,7 +234,7 @@ export async function getCurrentRankByPuuid(puuid: string) {
   }
 }
 
-export async function getMatchHistory(puuid: string, startTime?: number, endTime?: number) {
+export async function getMatchHistory(puuid: string, startTime?: number, endTime?: number, maxMatches: number = 100) {
   try {
     let start = 0
     let allMatches: string[] = []
@@ -242,9 +242,12 @@ export async function getMatchHistory(puuid: string, startTime?: number, endTime
     let requestCount = 0
 
     // Fetch matches in batches
-    while (true) {
-      let url = RIOT_API_ENDPOINTS.matchListByPuuid(puuid, RIOT_API_CONFIG.routing, start, batchSize)
-      
+    while (allMatches.length < maxMatches) {
+      const remaining = maxMatches - allMatches.length
+      const currentBatchSize = Math.min(batchSize, remaining)
+
+      let url = RIOT_API_ENDPOINTS.matchListByPuuid(puuid, RIOT_API_CONFIG.routing, start, currentBatchSize)
+
       if (startTime) {
         url += `&startTime=${Math.floor(startTime / 1000)}`
       }
@@ -259,12 +262,12 @@ export async function getMatchHistory(puuid: string, startTime?: number, endTime
       requestCount++
 
       if (matches.length === 0) break
-      
+
       allMatches = [...allMatches, ...matches]
-      
-      if (matches.length < batchSize) break
-      
-      start += batchSize
+
+      if (matches.length < currentBatchSize) break
+
+      start += currentBatchSize
     }
 
     const tracker = getTracker()
@@ -299,8 +302,8 @@ export async function getMatchDetails(matchId: string): Promise<RiotMatchDetails
 export async function calculatePlayerStats(
   riotId: string,
   puuid: string,
-  startTime: number,
-  endTime: number,
+  startTime?: number,
+  endTime?: number,
   useScraping: boolean = true // Flag para habilitar/desabilitar scraping
 ): Promise<Omit<PlayerStats, 'position' | 'previousPosition'> | null> {
   const tracker = getTracker()
@@ -470,21 +473,28 @@ export async function calculatePlayerStats(
     log(`Buscando rank atual para ${riotId}...`, '📊')
     const currentRank = await getCurrentRankByPuuid(puuid)
     
-    // Get match history for the period
-    // OTIMIZAÇÃO: Verificar cache do Supabase primeiro
+    // Get match history
+    // Se não tiver período definido, buscar últimas 100 partidas (ranking atual)
+    // Se tiver período, buscar partidas do período (ranking mensal)
     let matchIds: string[] = []
-    
-    if (isSupabaseConfigured()) {
+    const isGeneralRanking = !startTime && !endTime
+
+    if (isGeneralRanking) {
+      // Ranking geral: buscar últimas 100 partidas ranqueadas
+      log(`Buscando últimas 100 partidas para ranking geral...`, '🔄')
+      matchIds = await getMatchHistory(puuid, undefined, undefined, 100)
+    } else if (isSupabaseConfigured() && startTime && endTime) {
+      // Ranking mensal: verificar cache primeiro
       log(`Verificando cache de match history no Supabase...`, '🗄️')
       const cachedMatchIds = await getMatchHistoryCache(puuid, startTime, endTime)
-      
+
       if (cachedMatchIds && cachedMatchIds.length > 0) {
         log(`${cachedMatchIds.length} match IDs encontrados no cache`, '✅')
         matchIds = cachedMatchIds
       } else {
         log(`Cache não encontrado, buscando da API...`, '🔄')
         matchIds = await getMatchHistory(puuid, startTime, endTime)
-        
+
         // Salvar no cache para próxima vez
         if (matchIds.length > 0) {
           await saveMatchHistoryCache(puuid, startTime, endTime, matchIds)
