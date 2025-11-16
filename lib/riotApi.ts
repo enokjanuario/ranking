@@ -303,25 +303,25 @@ export async function getMatchDetails(matchId: string): Promise<RiotMatchDetails
  * Calcula estatísticas de um jogador usando estratégia INCREMENTAL com banco de dados
  *
  * ESTRATÉGIA OTIMIZADA (Ranking Geral - últimos 30 dias):
- * 1. Buscar partidas existentes dos últimos 30 dias do BANCO DE DADOS
- * 2. Buscar últimas 100 partidas da API para detectar TODAS as novas
- * 3. Identificar quais partidas são NOVAS (não estão no banco)
- * 4. Buscar detalhes APENAS das partidas NOVAS
- * 5. Salvar partidas novas no banco
- * 6. Combinar: partidas do banco + partidas novas = ranking completo
+ * 1. SEED INICIAL (uma vez): Popular banco com TODAS as partidas via script seed-matches
+ * 2. Buscar partidas existentes dos últimos 30 dias do BANCO DE DADOS
+ * 3. Buscar apenas últimas 10 partidas da API para detectar NOVAS
+ * 4. Identificar quais partidas são NOVAS (não estão no banco)
+ * 5. Buscar detalhes APENAS das partidas NOVAS (geralmente 1-5)
+ * 6. Salvar partidas novas no banco
+ * 7. Combinar: partidas do banco + partidas novas = ranking completo
  *
  * REDUÇÃO DE API CALLS:
- * - Antes: ~150 match IDs dos últimos 30 dias + ~150 match details = ~300 requests/player
- * - Depois (primeira vez): 100 match IDs + ~100 match details = ~200 requests/player
- * - Depois (atualizações): 100 match IDs + ~5-10 match details = ~110 requests/player
- * - Economia: ~60% de redução após primeira atualização
+ * - Antes: ~150 match IDs + ~150 match details = ~300 requests/player
+ * - Depois (com seed): 10 match IDs + ~1-5 match details = ~15 requests/player
+ * - Economia: ~95% de redução! 🚀
  *
- * Para 9 jogadores (após primeira atualização):
+ * Para 9 jogadores:
  * - Antes: 9 × 300 = 2700 requests (excede 100 req/2min) ❌
- * - Depois: 9 × 110 = 990 requests (dentro do limite com batching de 3 players) ✅
+ * - Depois: 9 × 15 = 135 requests (bem dentro do limite!) ✅
  *
- * IMPORTANTE: Usa 100 match IDs (não 20) para evitar perder partidas caso jogador
- * seja muito ativo. Mas só busca DETALHES das partidas que não estão no banco!
+ * IMPORTANTE: Executar script "npm run seed-matches" UMA VEZ antes de usar!
+ * Depois disso, sistema funciona automaticamente a cada 15 minutos.
  */
 export async function calculatePlayerStats(
   riotId: string,
@@ -520,11 +520,11 @@ export async function calculatePlayerStats(
 
         log(`${dbMatches.length} partidas encontradas no banco dos últimos 30 dias`, '💾')
 
-        // 2. Buscar últimas 100 partidas da API para garantir que pegamos TODAS as novas
-        // Mesmo jogadores muito ativos raramente jogam mais de 100 partidas em 30 dias
-        // (100 partidas = ~3.3 partidas/dia, o que já é bastante ativo)
-        log(`Buscando últimas 100 partidas da API para detectar novas...`, '🔄')
-        const recentMatchIds = await getMatchHistory(puuid, undefined, undefined, 100)
+        // 2. Buscar apenas últimas 10 partidas da API para detectar NOVAS
+        // Com seed inicial completo no banco, apenas partidas recentes são necessárias
+        // 10 partidas cobre ~3 dias de jogos para jogador muito ativo (3-4 jogos/dia)
+        log(`Buscando últimas 10 partidas da API para detectar novas...`, '🔄')
+        const recentMatchIds = await getMatchHistory(puuid, undefined, undefined, 10)
 
         // 3. Identificar partidas NOVAS (não estão no banco)
         const newMatchIds = recentMatchIds.filter(id => !dbMatchIds.has(id))
