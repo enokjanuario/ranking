@@ -299,6 +299,25 @@ export async function getMatchDetails(matchId: string): Promise<RiotMatchDetails
   }
 }
 
+/**
+ * Calcula estatísticas de um jogador usando estratégia INCREMENTAL com banco de dados
+ *
+ * ESTRATÉGIA OTIMIZADA (Ranking Geral - últimos 30 dias):
+ * 1. Buscar partidas existentes dos últimos 30 dias do BANCO DE DADOS
+ * 2. Buscar apenas últimas 20 partidas da API para detectar NOVAS
+ * 3. Buscar detalhes apenas das partidas NOVAS (não estão no banco)
+ * 4. Salvar partidas novas no banco
+ * 5. Combinar: partidas do banco + partidas novas
+ *
+ * REDUÇÃO DE API CALLS:
+ * - Antes: ~150 match IDs + ~150 match details = ~300 requests/player
+ * - Depois: 20 match IDs + ~10-20 match details = ~30-40 requests/player
+ * - Economia: ~90% de redução nas chamadas à API
+ *
+ * Para 9 jogadores:
+ * - Antes: 9 × 300 = 2700 requests (excede 100 req/2min)
+ * - Depois: 9 × 40 = 360 requests (dentro do limite com batching)
+ */
 export async function calculatePlayerStats(
   riotId: string,
   puuid: string,
@@ -480,10 +499,37 @@ export async function calculatePlayerStats(
     const isGeneralRanking = !startTime && !endTime
 
     if (isGeneralRanking) {
-      // Ranking geral: buscar partidas dos últimos 30 dias (sem limite de quantidade)
+      // OTIMIZAÇÃO: Para ranking geral, usar banco de dados incrementalmente
+      // Buscar apenas partidas NOVAS (últimas 20) e combinar com partidas do banco
       const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000)
-      log(`Buscando partidas dos últimos 30 dias para ranking geral...`, '🔄')
-      matchIds = await getMatchHistory(puuid, thirtyDaysAgo, undefined, 1000) // Max 1000 para segurança
+
+      if (isSupabaseConfigured()) {
+        log(`Usando estratégia incremental: banco + API apenas para partidas novas`, '🚀')
+
+        // 1. Buscar partidas existentes dos últimos 30 dias do BANCO
+        const dbMatches = await getProcessedMatches(puuid, thirtyDaysAgo, undefined)
+        const dbMatchIds = new Set(dbMatches.map(m => m.match_id))
+
+        log(`${dbMatches.length} partidas encontradas no banco dos últimos 30 dias`, '💾')
+
+        // 2. Buscar apenas últimas 20 partidas da API para detectar NOVAS
+        log(`Buscando últimas 20 partidas da API para detectar novas...`, '🔄')
+        const recentMatchIds = await getMatchHistory(puuid, undefined, undefined, 20)
+
+        // 3. Identificar partidas NOVAS (não estão no banco)
+        const newMatchIds = recentMatchIds.filter(id => !dbMatchIds.has(id))
+
+        log(`${newMatchIds.length} partidas novas detectadas (de ${recentMatchIds.length} verificadas)`, '🆕')
+
+        // 4. Combinar: match IDs do banco + match IDs novos
+        matchIds = [...Array.from(dbMatchIds), ...newMatchIds]
+
+        log(`Total: ${matchIds.length} partidas (${dbMatchIds.size} do banco + ${newMatchIds.length} novas)`, '📊')
+      } else {
+        // Fallback se banco não estiver configurado
+        log(`Banco não configurado, buscando últimas 100 partidas da API...`, '⚠️')
+        matchIds = await getMatchHistory(puuid, undefined, undefined, 100)
+      }
     } else if (isSupabaseConfigured() && startTime && endTime) {
       // Ranking mensal: verificar cache primeiro
       log(`Verificando cache de match history no Supabase...`, '🗄️')
@@ -545,21 +591,35 @@ export async function calculatePlayerStats(
     const championStats: ChampionStats = {}
     let skippedMatches = 0
 
-    // OTIMIZAÇÃO: Buscar matches do Supabase primeiro
+    // OTIMIZAÇÃO: Para ranking geral, já temos matches do banco da lógica acima
+    // Para ranking mensal, buscar do banco agora
     let processedMatchesFromDB: any[] = []
     let matchIdsToFetch: string[] = []
-    
+
     if (isSupabaseConfigured() && matchIds.length > 0) {
-      log(`Buscando matches processados do Supabase...`, '🗄️')
-      processedMatchesFromDB = await getProcessedMatches(puuid, startTime, endTime)
-      
-      // Criar set de match IDs já processados
-      const processedMatchIds = new Set(processedMatchesFromDB.map(m => m.match_id))
-      
-      // Filtrar apenas matches que ainda não foram processados
-      matchIdsToFetch = matchIds.filter(id => !processedMatchIds.has(id))
-      
-      log(`${processedMatchesFromDB.length} matches do banco, ${matchIdsToFetch.length} precisam ser buscados da API`, '📊')
+      // Se for ranking geral E usamos banco, já temos os matches na variável dbMatches
+      // Se for ranking mensal, buscar agora
+      if (isGeneralRanking) {
+        // Para ranking geral, reutilizar dbMatches que já foi buscado acima
+        // Apenas buscar detalhes das partidas NOVAS
+        const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000)
+        processedMatchesFromDB = await getProcessedMatches(puuid, thirtyDaysAgo, undefined)
+
+        // Identificar quais matches ainda precisam ser buscados
+        const processedMatchIds = new Set(processedMatchesFromDB.map(m => m.match_id))
+        matchIdsToFetch = matchIds.filter(id => !processedMatchIds.has(id))
+
+        log(`${processedMatchesFromDB.length} matches do banco, ${matchIdsToFetch.length} precisam ser buscados da API`, '📊')
+      } else {
+        // Ranking mensal: buscar do banco
+        log(`Buscando matches processados do Supabase...`, '🗄️')
+        processedMatchesFromDB = await getProcessedMatches(puuid, startTime, endTime)
+
+        const processedMatchIds = new Set(processedMatchesFromDB.map(m => m.match_id))
+        matchIdsToFetch = matchIds.filter(id => !processedMatchIds.has(id))
+
+        log(`${processedMatchesFromDB.length} matches do banco, ${matchIdsToFetch.length} precisam ser buscados da API`, '📊')
+      }
     } else {
       matchIdsToFetch = matchIds
     }
