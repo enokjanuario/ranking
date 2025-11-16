@@ -21,7 +21,7 @@ export const dynamic = 'force-dynamic'
 const CRON_SECRET = process.env.CRON_SECRET || 'change-me-in-production'
 
 // Função para buscar dados frescos
-async function fetchFreshData(monthParam: string, startTime: number, endTime: number) {
+async function fetchFreshData(monthParam: string, startTime?: number, endTime?: number) {
   startStep('Buscar accounts')
   log(`Buscando accounts para ${TRACKED_PLAYERS.length} jogadores...`, '📥')
   
@@ -84,7 +84,7 @@ async function fetchFreshData(monthParam: string, startTime: number, endTime: nu
 }
 
 // Retry logic para atualização
-async function updateRankingWithRetry(monthParam: string, startTime: number, endTime: number, period: any, maxRetries: number = 2): Promise<{success: boolean, data?: any[], error?: string}> {
+async function updateRankingWithRetry(monthParam: string, startTime: number | undefined, endTime: number | undefined, period: any, maxRetries: number = 2): Promise<{success: boolean, data?: any[], error?: string}> {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       log(`Tentativa ${attempt}/${maxRetries} de atualizar ranking para ${monthParam}`, '🔄')
@@ -159,20 +159,32 @@ export async function GET(request: NextRequest) {
   const tracker = startProcess('Cron Job - Update Ranking')
 
   try {
-    // Obter mês atual ou mês especificado
-    const monthParam = request.nextUrl.searchParams.get('month') || 
-      `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
-    
+    // Por padrão, atualizar ranking geral (sem filtro de mês)
+    // Se quiser ranking mensal, passar ?month=YYYY-MM
+    const monthParam = request.nextUrl.searchParams.get('month') || 'current'
+
     log(`Iniciando atualização automática para ${monthParam}`, '🤖')
-    
-    // Parse month parameter
-    const [year, month] = monthParam.split('-').map(Number)
-    const startTime = new Date(year, month - 1, 1).getTime()
-    const endTime = new Date(year, month, 0, 23, 59, 59, 999).getTime()
-    
-    const period = {
-      start: new Date(startTime).toISOString(),
-      end: new Date(endTime).toISOString(),
+
+    // Parse month parameter ou usar undefined para ranking geral
+    let startTime: number | undefined
+    let endTime: number | undefined
+    let period: { start: string; end: string }
+
+    if (monthParam !== 'current') {
+      const [year, month] = monthParam.split('-').map(Number)
+      startTime = new Date(year, month - 1, 1).getTime()
+      endTime = new Date(year, month, 0, 23, 59, 59, 999).getTime()
+      period = {
+        start: new Date(startTime).toISOString(),
+        end: new Date(endTime).toISOString(),
+      }
+    } else {
+      // Ranking geral: últimos 30 dias
+      const thirtyDaysAgo = new Date(Date.now() - (30 * 24 * 60 * 60 * 1000))
+      period = {
+        start: thirtyDaysAgo.toISOString(),
+        end: 'current',
+      }
     }
     
     // Verificar se já está em atualização
