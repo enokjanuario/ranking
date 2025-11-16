@@ -190,9 +190,9 @@ export async function getAccountByRiotId(riotId: string) {
   try {
     const [gameName, tagLine] = riotId.split('#')
     const url = RIOT_API_ENDPOINTS.accountByRiotId(gameName, tagLine, RIOT_API_CONFIG.routing)
-    
-    // Reduzido delay - retry logic cuida de rate limits
-    await delay(50)
+
+    // Delay otimizado para evitar rate limits (75ms = ~13 req/s com margem de segurança)
+    await delay(75)
     const response = await fetchWithRetry(() => api.get(url), 3, 1000, 'Account Lookup')
     return response.data
   } catch (error: any) {
@@ -208,9 +208,9 @@ export async function getCurrentRankByPuuid(puuid: string) {
   try {
     // Use the correct endpoint: GET /lol/league/v4/entries/by-puuid/{encryptedPUUID}
     const leagueUrl = RIOT_API_ENDPOINTS.leagueEntriesByPuuid(puuid, RIOT_API_CONFIG.region)
-    
-    // Reduzido delay - retry logic cuida de rate limits
-    await delay(50)
+
+    // Delay otimizado para evitar rate limits
+    await delay(75)
     const leagueResponse = await fetchWithRetry(() => api.get(leagueUrl), 3, 1000, 'Rank Lookup')
     
     // Find ranked solo/duo queue
@@ -252,8 +252,8 @@ export async function getMatchHistory(puuid: string, startTime?: number, endTime
         url += `&endTime=${Math.floor(endTime / 1000)}`
       }
 
-      // Reduzido delay - retry logic cuida de rate limits
-      await delay(50)
+      // Delay otimizado para evitar rate limits
+      await delay(75)
       const response = await fetchWithRetry(() => api.get(url), 3, 1000, 'Match History')
       const matches = response.data
       requestCount++
@@ -285,9 +285,9 @@ export async function getMatchHistory(puuid: string, startTime?: number, endTime
 export async function getMatchDetails(matchId: string): Promise<RiotMatchDetails | null> {
   try {
     const url = RIOT_API_ENDPOINTS.matchById(matchId, RIOT_API_CONFIG.routing)
-    
-    // Reduzido delay - retry logic cuida de rate limits
-    await delay(50)
+
+    // Delay otimizado para evitar rate limits
+    await delay(75)
     const response = await fetchWithRetry(() => api.get(url), 3, 1000, 'Match Details')
     return response.data
   } catch (error: any) {
@@ -557,21 +557,21 @@ export async function calculatePlayerStats(
     let matchDetailsBatch: (RiotMatchDetails | null)[] = []
     
     if (matchIdsToFetch.length > 0) {
-      log(`Buscando ${matchIdsToFetch.length} matches da API em batches de 8...`, '⚙️')
+      log(`Buscando ${matchIdsToFetch.length} matches da API em batches de 6...`, '⚙️')
       matchDetailsBatch = await processBatch(
         matchIdsToFetch,
-        8,
+        6, // Reduzido de 8 para 6 para evitar rate limits
         async (matchId) => {
           const details = await getCachedMatchDetails(matchId)
-          
+
           // Salvar no Supabase após buscar
           if (details && isSupabaseConfigured()) {
             await saveProcessedMatch(matchId, puuid, details)
           }
-          
+
           return details
         },
-        150
+        250 // Aumentado de 150ms para 250ms para mais margem de segurança
       )
       
       log(`${matchDetailsBatch.length} match details processados da API`, '✅')
@@ -793,6 +793,60 @@ export async function calculatePlayerStats(
     if (tracker) {
       log(`Erro ao calcular stats para ${riotId}: ${error.message}`, '❌')
     }
+
+    // FALLBACK FINAL: Tentar buscar dados do Supabase mesmo que sejam antigos
+    // Isso é melhor do que não mostrar nada
+    if (isSupabaseConfigured()) {
+      try {
+        const monthStr = `${new Date(startTime).getFullYear()}-${String(new Date(startTime).getMonth() + 1).padStart(2, '0')}`
+        log(`Tentando fallback final: buscar stats antigos do Supabase para ${monthStr}...`, '🔄')
+
+        const cachedStats = await getMonthlyStats(puuid, monthStr)
+        if (cachedStats && cachedStats.total_games > 0) {
+          log(`✅ Fallback bem-sucedido! Usando dados do Supabase (${cachedStats.total_games} games)`, '✅')
+
+          const safeNumber = (value: any, defaultValue: number = 0): number => {
+            if (value === null || value === undefined) return defaultValue
+            const num = typeof value === 'string' ? parseFloat(value) : Number(value)
+            return isNaN(num) ? defaultValue : num
+          }
+
+          return {
+            summonerName: cachedStats.summoner_name || riotId.split('#')[0],
+            puuid,
+            riotId: cachedStats.riot_id || riotId,
+            role: PLAYER_ROLES[riotId] || 'mid',
+            winRate: safeNumber(cachedStats.win_rate, 0),
+            totalGames: safeNumber(cachedStats.total_games, 0),
+            wins: safeNumber(cachedStats.wins, 0),
+            losses: safeNumber(cachedStats.losses, 0),
+            lpChange: safeNumber(cachedStats.lp_change, 0),
+            currentRank: cachedStats.current_rank as any,
+            kda: safeNumber(cachedStats.kda, 0),
+            avgCS: safeNumber(cachedStats.avg_cs, 0),
+            avgVisionScore: safeNumber(cachedStats.avg_vision_score, 0),
+            avgGameDuration: safeNumber(cachedStats.avg_game_duration, 0),
+            mostPlayedChampion: cachedStats.top_champions?.[0] ? {
+              name: cachedStats.top_champions[0].name || 'Unknown',
+              icon: cachedStats.top_champions[0].icon || '',
+              games: safeNumber(cachedStats.top_champions[0].games, 0),
+            } : {
+              name: 'Unknown',
+              icon: '',
+              games: 0,
+            },
+            topChampions: (cachedStats.top_champions || []).map((champ: any) => ({
+              name: champ.name || 'Unknown',
+              icon: champ.icon || '',
+              games: safeNumber(champ.games, 0),
+            })),
+          }
+        }
+      } catch (fallbackError: any) {
+        log(`Fallback final falhou: ${fallbackError.message}`, '❌')
+      }
+    }
+
     return null
   }
 }

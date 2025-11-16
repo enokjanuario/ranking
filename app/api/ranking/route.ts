@@ -87,12 +87,12 @@ async function fetchFreshData(monthParam: string, startTime: number, endTime: nu
   }
   
   // OTIMIZAÇÃO: Processar jogadores em paralelo (mas com controle de concorrência)
-  // Processar em batches de 4 para melhor performance (aumentado de 2)
+  // Processar em batches de 3 para respeitar rate limits da Riot API
   startStep('Processar estatísticas dos jogadores')
-  log(`Processando ${filteredPlayerData.length} jogadores em batches de 4...`, '🔄')
-  
+  log(`Processando ${filteredPlayerData.length} jogadores em batches de 3...`, '🔄')
+
   const playerResults: Array<Omit<PlayerStats, 'position' | 'previousPosition'> | null> = []
-  const batchSize = 4
+  const batchSize = 3 // Reduzido de 4 para 3 para evitar rate limits
   
   for (let i = 0; i < filteredPlayerData.length; i += batchSize) {
     const batch = filteredPlayerData.slice(i, i + batchSize)
@@ -121,10 +121,10 @@ async function fetchFreshData(monthParam: string, startTime: number, endTime: nu
     playerResults.push(...batchResults)
     
     logProgress(i + batchResults.length, filteredPlayerData.length, 'jogadores')
-    
-    // Pequeno delay entre batches para não sobrecarregar
+
+    // Delay entre batches para não sobrecarregar e respeitar rate limits
     if (i + batchSize < filteredPlayerData.length) {
-      await new Promise(resolve => setTimeout(resolve, 100))
+      await new Promise(resolve => setTimeout(resolve, 200)) // Aumentado de 100ms para 200ms
     }
   }
 
@@ -195,11 +195,11 @@ export async function GET(request: NextRequest) {
           )
         }
         
-        // PRE-WARMING: Se cache principal está próximo de expirar (menos de 3 minutos),
+        // PRE-WARMING: Se cache principal está próximo de expirar (menos de 7 minutos),
         // iniciar atualização do staging em background
         if (cacheResult.source === 'main' && !cacheResult.isExpired) {
           const cacheAge = Date.now() - cacheResult.data.timestamp
-          const PRE_WARM_THRESHOLD = 12 * 60 * 1000 // 12 minutos (3 min antes de expirar)
+          const PRE_WARM_THRESHOLD = 8 * 60 * 1000 // 8 minutos (7 min antes de expirar)
           
           if (cacheAge > PRE_WARM_THRESHOLD) {
             startStep('Pre-warming staging cache')
@@ -241,13 +241,33 @@ export async function GET(request: NextRequest) {
     // Verificar se já há uma atualização em progresso
     startStep('Verificar atualização em progresso')
     const updateInProgress = await isUpdateInProgress(monthParam)
-    
+
     if (updateInProgress) {
-      log(`Atualização já em progresso para ${monthParam}, aguardando...`, '⏸️')
-      
-      // Aguardar a atualização em progresso terminar
+      log(`Atualização já em progresso para ${monthParam}`, '⏸️')
+
+      // STALE-WHILE-REVALIDATE: Tentar retornar cache expirado imediatamente
+      // ao invés de aguardar a atualização terminar
+      const expiredCacheResult = await getCacheOrStaging(monthParam, true)
+
+      if (expiredCacheResult.data) {
+        log(`Retornando cache expirado enquanto atualização está em progresso (stale-while-revalidate)`, '⚡')
+        endProcess()
+        return NextResponse.json({
+          success: true,
+          players: expiredCacheResult.data.players,
+          period: expiredCacheResult.data.period,
+          cached: true,
+          stale: true,
+          cachedAt: new Date(expiredCacheResult.data.timestamp).toISOString(),
+          source: expiredCacheResult.source,
+          updateInProgress: true,
+        })
+      }
+
+      // Se não tiver cache expirado, aguardar a atualização terminar
+      log(`Cache expirado não disponível, aguardando atualização terminar...`, '⏳')
       await waitForUpdate(monthParam)
-      
+
       startStep('Buscar cache após espera')
       // Tentar pegar do cache ou staging novamente
       const cacheResult = await getCacheOrStaging(monthParam)
@@ -287,11 +307,11 @@ export async function GET(request: NextRequest) {
     // Tentar adquirir lock para atualização
     startStep('Adquirir lock de atualização')
     const lockAcquired = await acquireUpdateLock(monthParam)
-    
+
     if (!lockAcquired) {
-      log('Não foi possível adquirir lock, tentando retornar cache expirado', '⚠️')
+      log('Não foi possível adquirir lock, tentando retornar cache expirado (stale-while-revalidate)', '⚠️')
       // Se não conseguir lock, tentar retornar staging ou cache expirado
-      const cacheResult = await getCacheOrStaging(monthParam)
+      const cacheResult = await getCacheOrStaging(monthParam, true) // allowExpired=true
       if (cacheResult.data) {
         endProcess()
         return NextResponse.json({
@@ -302,10 +322,11 @@ export async function GET(request: NextRequest) {
           stale: true,
           cachedAt: new Date(cacheResult.data.timestamp).toISOString(),
           source: cacheResult.source,
+          updateInProgress: true,
         })
       }
-      
-      trackError('Lock', 'Update in progress, please try again')
+
+      trackError('Lock', 'Update in progress and no stale cache available')
       endProcess()
       return NextResponse.json(
         { success: false, error: 'Update in progress, please try again' },
