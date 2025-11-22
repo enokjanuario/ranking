@@ -21,7 +21,7 @@ export const dynamic = 'force-dynamic'
 const CRON_SECRET = process.env.CRON_SECRET || 'change-me-in-production'
 
 // Função para buscar dados frescos
-async function fetchFreshData(monthParam: string, startTime: number, endTime: number) {
+async function fetchFreshData(monthParam: string, startTime?: number, endTime?: number) {
   startStep('Buscar accounts')
   log(`Buscando accounts para ${TRACKED_PLAYERS.length} jogadores...`, '📥')
   
@@ -41,10 +41,10 @@ async function fetchFreshData(monthParam: string, startTime: number, endTime: nu
   }
   
   startStep('Processar estatísticas dos jogadores')
-  log(`Processando ${playerData.length} jogadores em batches de 4...`, '🔄')
-  
+  log(`Processando ${playerData.length} jogadores em batches de 3...`, '🔄')
+
   const playerResults: Array<any> = []
-  const batchSize = 4
+  const batchSize = 3 // Reduzido de 4 para 3 para evitar rate limits
   
   for (let i = 0; i < playerData.length; i += batchSize) {
     const batch = playerData.slice(i, i + batchSize)
@@ -66,9 +66,10 @@ async function fetchFreshData(monthParam: string, startTime: number, endTime: nu
     
     const batchResults = await Promise.all(batchPromises)
     playerResults.push(...batchResults)
-    
+
+    // Delay entre batches para respeitar rate limits
     if (i + batchSize < playerData.length) {
-      await new Promise(resolve => setTimeout(resolve, 100))
+      await new Promise(resolve => setTimeout(resolve, 200)) // Aumentado de 100ms para 200ms
     }
   }
   
@@ -82,35 +83,108 @@ async function fetchFreshData(monthParam: string, startTime: number, endTime: nu
   return rankedPlayers
 }
 
+// Retry logic para atualização
+async function updateRankingWithRetry(monthParam: string, startTime: number | undefined, endTime: number | undefined, period: any, maxRetries: number = 2): Promise<{success: boolean, data?: any[], error?: string}> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      log(`Tentativa ${attempt}/${maxRetries} de atualizar ranking para ${monthParam}`, '🔄')
+
+      // Adquirir lock
+      startStep('Adquirir lock')
+      const lockAcquired = await acquireUpdateLock(monthParam)
+
+      if (!lockAcquired) {
+        log(`Não foi possível adquirir lock (tentativa ${attempt}/${maxRetries})`, '⏸️')
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, 5000)) // Aguardar 5s antes de retry
+          continue
+        }
+        return { success: false, error: 'Could not acquire lock after retries' }
+      }
+
+      try {
+        // Buscar dados frescos
+        startStep('Buscar dados frescos')
+        const rankedPlayers = await fetchFreshData(monthParam, startTime, endTime)
+
+        if (!rankedPlayers || rankedPlayers.length === 0) {
+          log(`Nenhum jogador retornado (tentativa ${attempt}/${maxRetries})`, '⚠️')
+          if (attempt < maxRetries) {
+            await new Promise(resolve => setTimeout(resolve, 3000))
+            continue
+          }
+          return { success: false, error: 'No players returned after retries' }
+        }
+
+        // Salvar em staging primeiro
+        startStep('Salvar staging cache')
+        await setStagingCache(monthParam, rankedPlayers, period)
+
+        // Promover staging para principal
+        startStep('Promover staging para principal')
+        await promoteStagingToMain(monthParam)
+
+        log(`✅ Atualização bem-sucedida na tentativa ${attempt}/${maxRetries}`, '✅')
+        return { success: true, data: rankedPlayers }
+      } finally {
+        await releaseUpdateLock(monthParam)
+      }
+    } catch (error: any) {
+      log(`Erro na tentativa ${attempt}/${maxRetries}: ${error.message}`, '❌')
+      if (attempt < maxRetries) {
+        const delayMs = 3000 * attempt // Backoff exponencial: 3s, 6s
+        log(`Aguardando ${delayMs/1000}s antes da próxima tentativa...`, '⏳')
+        await new Promise(resolve => setTimeout(resolve, delayMs))
+      } else {
+        return { success: false, error: error.message }
+      }
+    }
+  }
+
+  return { success: false, error: 'Max retries exceeded' }
+}
+
 export async function GET(request: NextRequest) {
   // Verificar secret token
   const authHeader = request.headers.get('authorization')
   const secret = request.nextUrl.searchParams.get('secret')
-  
+
   if (authHeader !== `Bearer ${CRON_SECRET}` && secret !== CRON_SECRET) {
     return NextResponse.json(
       { success: false, error: 'Unauthorized' },
       { status: 401 }
     )
   }
-  
+
   const tracker = startProcess('Cron Job - Update Ranking')
-  
+
   try {
-    // Obter mês atual ou mês especificado
-    const monthParam = request.nextUrl.searchParams.get('month') || 
-      `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
-    
+    // Por padrão, atualizar ranking geral (sem filtro de mês)
+    // Se quiser ranking mensal, passar ?month=YYYY-MM
+    const monthParam = request.nextUrl.searchParams.get('month') || 'current'
+
     log(`Iniciando atualização automática para ${monthParam}`, '🤖')
-    
-    // Parse month parameter
-    const [year, month] = monthParam.split('-').map(Number)
-    const startTime = new Date(year, month - 1, 1).getTime()
-    const endTime = new Date(year, month, 0, 23, 59, 59, 999).getTime()
-    
-    const period = {
-      start: new Date(startTime).toISOString(),
-      end: new Date(endTime).toISOString(),
+
+    // Parse month parameter ou usar undefined para ranking geral
+    let startTime: number | undefined
+    let endTime: number | undefined
+    let period: { start: string; end: string }
+
+    if (monthParam !== 'current') {
+      const [year, month] = monthParam.split('-').map(Number)
+      startTime = new Date(year, month - 1, 1).getTime()
+      endTime = new Date(year, month, 0, 23, 59, 59, 999).getTime()
+      period = {
+        start: new Date(startTime).toISOString(),
+        end: new Date(endTime).toISOString(),
+      }
+    } else {
+      // Ranking geral: últimos 30 dias
+      const thirtyDaysAgo = new Date(Date.now() - (30 * 24 * 60 * 60 * 1000))
+      period = {
+        start: thirtyDaysAgo.toISOString(),
+        end: 'current',
+      }
     }
     
     // Verificar se já está em atualização
@@ -123,47 +197,28 @@ export async function GET(request: NextRequest) {
         month: monthParam,
       })
     }
-    
-    // Adquirir lock
-    startStep('Adquirir lock')
-    const lockAcquired = await acquireUpdateLock(monthParam)
-    
-    if (!lockAcquired) {
-      log(`Não foi possível adquirir lock para ${monthParam}`, '⚠️')
-      endProcess()
-      return NextResponse.json({
-        success: false,
-        error: 'Could not acquire lock',
-        month: monthParam,
-      })
-    }
-    
-    try {
-      // Buscar dados frescos
-      startStep('Buscar dados frescos')
-      const rankedPlayers = await fetchFreshData(monthParam, startTime, endTime)
-      
-      // Salvar em staging primeiro
-      startStep('Salvar staging cache')
-      await setStagingCache(monthParam, rankedPlayers, period)
-      
-      // Promover staging para principal
-      startStep('Promover staging para principal')
-      await promoteStagingToMain(monthParam)
-      
+
+    // Usar função com retry
+    const result = await updateRankingWithRetry(monthParam, startTime, endTime, period, 2)
+
+    if (result.success) {
       log(`Atualização automática concluída para ${monthParam}`, '✅')
-      
       endProcess()
       return NextResponse.json({
         success: true,
         message: 'Ranking updated successfully',
         month: monthParam,
-        playersCount: rankedPlayers.length,
+        playersCount: result.data?.length || 0,
         updatedAt: new Date().toISOString(),
       })
-    } finally {
-      // Sempre liberar lock
-      await releaseUpdateLock(monthParam)
+    } else {
+      log(`Atualização falhou após múltiplas tentativas: ${result.error}`, '❌')
+      endProcess()
+      return NextResponse.json({
+        success: false,
+        error: result.error || 'Update failed after retries',
+        month: monthParam,
+      }, { status: 500 })
     }
   } catch (error: any) {
     trackError('Cron Job', error)

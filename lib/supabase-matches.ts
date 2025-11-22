@@ -224,3 +224,60 @@ export async function cleanupOldMatches(): Promise<number> {
   }
 }
 
+/**
+ * Remove TODAS as partidas do banco de dados
+ * CUIDADO: Esta operação é irreversível!
+ */
+export async function dropAllMatches(): Promise<boolean> {
+  if (!isSupabaseConfigured() || !supabase) {
+    console.error('❌ Supabase não configurado')
+    return false
+  }
+
+  try {
+    console.log('🗑️ Removendo TODAS as partidas do banco...')
+
+    // Deletar todas as partidas
+    const { error } = await supabase
+      .from('processed_matches')
+      .delete()
+      .neq('match_id', '') // Condição que sempre é verdadeira (deleta tudo)
+
+    if (error) {
+      console.error('❌ Erro ao dropar matches:', error)
+      return false
+    }
+
+    console.log('✅ Todas as partidas foram removidas do banco')
+    return true
+  } catch (error) {
+    console.error('❌ Erro ao dropar matches:', error)
+    return false
+  }
+}
+
+/**
+ * Conta quantas partidas existem no banco
+ */
+export async function countMatches(): Promise<number> {
+  if (!isSupabaseConfigured() || !supabase) {
+    return 0
+  }
+
+  try {
+    const { count, error } = await supabase
+      .from('processed_matches')
+      .select('*', { count: 'exact', head: true })
+
+    if (error) {
+      console.error('❌ Erro ao contar matches:', error)
+      return 0
+    }
+
+    return count || 0
+  } catch (error) {
+    console.error('❌ Erro ao contar matches:', error)
+    return 0
+  }
+}
+
