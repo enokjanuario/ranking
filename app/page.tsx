@@ -19,7 +19,7 @@ export default function Home() {
   // Verificar se o campeonato já começou
   const COMPETITION_START = new Date('2025-11-24T03:00:00.000Z') // 00:00 BRT
   const isDev = process.env.NODE_ENV === 'development'
-  const isPaused = !isDev && new Date() < COMPETITION_START
+  const isPaused = false//!isDev && new Date() < COMPETITION_START
 
   useEffect(() => {
     // Set November 2025 as default
