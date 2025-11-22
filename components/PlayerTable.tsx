@@ -87,11 +87,33 @@ export default function PlayerTable({ players, selectedMonth, onMonthChange }: P
   const hasActiveFilters = searchTerm !== '' || selectedRole !== 'all' || sortField !== 'position' || sortOrder !== 'asc'
 
   useEffect(() => {
-    // Apenas novembro de 2024
-    const novemberDate = new Date(2024, 10, 1) // November 2024 (month is 0-indexed, so 10 = November)
-    const value = '2024-11'
-    const label = format(novemberDate, 'MMMM yyyy', { locale: ptBR })
-    setMonths([{ value, label: label.charAt(0).toUpperCase() + label.slice(1) }])
+    // Gerar meses disponíveis dinamicamente
+    // Começa em novembro 2025 (início do campeonato) até o mês atual
+    const availableMonths: { value: string; label: string }[] = []
+    const now = new Date()
+
+    // Começar do mês de início do campeonato (Novembro 2025)
+    let current = new Date(2025, 10, 1) // November 2025
+
+    while (current <= now) {
+      const value = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}`
+      const label = format(current, 'MMMM yyyy', { locale: ptBR })
+      availableMonths.push({
+        value,
+        label: label.charAt(0).toUpperCase() + label.slice(1)
+      })
+      current.setMonth(current.getMonth() + 1)
+    }
+
+    // Garantir que pelo menos novembro 2025 esteja disponível
+    if (availableMonths.length === 0) {
+      const novemberDate = new Date(2025, 10, 1)
+      const value = '2025-11'
+      const label = format(novemberDate, 'MMMM yyyy', { locale: ptBR })
+      availableMonths.push({ value, label: label.charAt(0).toUpperCase() + label.slice(1) })
+    }
+
+    setMonths(availableMonths)
   }, [])
 
   const handleSort = (field: SortField) => {
@@ -285,10 +307,10 @@ export default function PlayerTable({ players, selectedMonth, onMonthChange }: P
                 <Image
                   src={ROLE_ICONS[role]}
                   alt={ROLE_NAMES[role]}
-                  width={40}
-                  height={40}
+                  width={32}
+                  height={32}
                   className={`object-contain transition-all duration-300 ${selectedRole === role ? 'opacity-100 drop-shadow-lg' : 'opacity-80 group-hover:opacity-100'} ${role === 'suporte' ? 'object-[center_center] scale-110' : ''}`}
-                  style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                  style={{ width: '75%', height: '75%', objectFit: 'contain' }}
                 />
                 {/* Selected indicator - more visible */}
                 {selectedRole === role && (
@@ -309,7 +331,7 @@ export default function PlayerTable({ players, selectedMonth, onMonthChange }: P
               { field: 'winRate' as SortField, label: 'Win Rate' },
               { field: 'kda' as SortField, label: 'KDA' },
               { field: 'totalGames' as SortField, label: 'Jogos' },
-              { field: 'lpChange' as SortField, label: 'LP' },
+              { field: 'lpChange' as SortField, label: 'PDLs ganhos' },
             ].map(({ field, label }) => (
               <motion.button
                 key={field}
@@ -365,6 +387,8 @@ export default function PlayerTable({ players, selectedMonth, onMonthChange }: P
           const rankImg = getRankImage(player.currentRank?.tier)
           const filteredPosition = idx + 1 // Posição na lista filtrada e ordenada
           
+          const opggUrl = `https://www.op.gg/summoners/br/${player.riotId.replace('#', '-')}`
+
           return (
             <motion.div
               key={player.puuid}
@@ -372,6 +396,7 @@ export default function PlayerTable({ players, selectedMonth, onMonthChange }: P
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: idx * 0.03, duration: 0.4 }}
               className="group relative glass-light rounded-2xl py-2 px-3 hover:glass transition-all duration-300 shadow-soft hover:shadow-soft-lg hover:-translate-y-0.5 cursor-pointer"
+              onClick={() => window.open(opggUrl, '_blank')}
             >
               {/* Subtle accent line */}
               <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-primary/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
@@ -390,17 +415,17 @@ export default function PlayerTable({ players, selectedMonth, onMonthChange }: P
                     {filteredPosition}
                   </div>
 
-                  {/* Player Name + LP Change - Compact */}
+                  {/* Player Name + Position Change - Compact */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <h3 className="text-sm font-bold text-neutral truncate group-hover:text-gradient-primary transition-colors">
                         {nickname}
                       </h3>
-                      {player.lpChange !== 0 && (
+                      {player.previousPosition && player.previousPosition !== player.position && (
                         <div className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold flex-shrink-0 ${
-                          player.lpChange > 0 ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
+                          player.previousPosition > player.position ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
                         }`}>
-                          {player.lpChange > 0 ? '↑' : '↓'} {Math.abs(player.lpChange)}
+                          {player.previousPosition > player.position ? '↑' : '↓'} {Math.abs(player.previousPosition - player.position)}
                         </div>
                       )}
                     </div>
@@ -517,6 +542,7 @@ export default function PlayerTable({ players, selectedMonth, onMonthChange }: P
                           width={28}
                           height={28}
                           className="rounded-lg shadow-soft group-hover/champ:shadow-soft-lg"
+                          unoptimized
                         />
                         <div className="absolute -bottom-1 -right-1 bg-gradient-to-br from-accent to-accent-dark text-neutral text-[8px] font-bold px-1 py-0.5 rounded shadow-md">
                           {champ.games}
@@ -553,87 +579,81 @@ export default function PlayerTable({ players, selectedMonth, onMonthChange }: P
       </div>
 
       {/* Stats Summary - Modern Minimalist Design */}
-      <motion.div 
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.4 }}
-        className="grid grid-cols-2 md:grid-cols-4 gap-6 mt-16"
-      >
-        {/* Total Games Card */}
-        <motion.div 
-          whileHover={{ y: -4, scale: 1.02 }}
-          className="relative glass-light rounded-3xl p-8 transition-all duration-300 shadow-soft hover:shadow-soft-lg group cursor-default"
-        >
-          <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-primary/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-          <div className="text-neutral/40 text-xs uppercase tracking-widest mb-5 font-bold">Partidas</div>
-          <div className="text-5xl font-black text-neutral mb-2 drop-shadow-lg">
-            {players.reduce((sum, p) => sum + p.totalGames, 0)}
-          </div>
-          <div className="text-neutral/50 text-sm font-semibold">
-            {players.length} jogadores
-          </div>
-        </motion.div>
-        
-        {/* Win Rate Card */}
-        <motion.div 
-          whileHover={{ y: -4, scale: 1.02 }}
-          className="relative glass-light rounded-3xl p-8 transition-all duration-300 shadow-soft hover:shadow-soft-lg group cursor-default"
-        >
-          <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-green-500/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-          <div className="text-neutral/40 text-xs uppercase tracking-widest mb-5 font-bold">Win Rate</div>
-          <div className="text-5xl font-black text-green-400 mb-4 drop-shadow-lg">
-            {(players.reduce((sum, p) => sum + safeNumber(p.winRate, 0), 0) / players.length).toFixed(0)}%
-          </div>
-          <div className="h-2.5 bg-dark-bg/40 rounded-full overflow-hidden shadow-inner">
-            <motion.div 
-              initial={{ width: 0 }}
-              animate={{ width: `${players.reduce((sum, p) => sum + safeNumber(p.winRate, 0), 0) / players.length}%` }}
-              transition={{ duration: 1, delay: 0.5, ease: "easeOut" }}
-              className="h-full bg-gradient-to-r from-green-500 to-green-400 rounded-full"
-            />
-          </div>
-        </motion.div>
-        
-        {/* KDA Card */}
-        <motion.div 
-          whileHover={{ y: -4, scale: 1.02 }}
-          className="relative glass-light rounded-3xl p-8 transition-all duration-300 shadow-soft hover:shadow-soft-lg group cursor-default"
-        >
-          <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-primary/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-          <div className="text-neutral/40 text-xs uppercase tracking-widest mb-5 font-bold">KDA Médio</div>
-          <div className="text-5xl font-black text-primary mb-4 drop-shadow-lg">
-            {(players.reduce((sum, p) => sum + safeNumber(p.kda, 0), 0) / players.length).toFixed(2)}
-          </div>
-          <div className="h-2.5 bg-dark-bg/40 rounded-full overflow-hidden shadow-inner">
-            <motion.div 
-              initial={{ width: 0 }}
-              animate={{ width: `${Math.min(100, (players.reduce((sum, p) => sum + safeNumber(p.kda, 0), 0) / players.length) * 20)}%` }}
-              transition={{ duration: 1, delay: 0.6, ease: "easeOut" }}
-              className="h-full bg-gradient-to-r from-primary to-primary-light rounded-full"
-            />
-          </div>
-        </motion.div>
-        
-        {/* CS Average Card */}
-        <motion.div 
-          whileHover={{ y: -4, scale: 1.02 }}
-          className="relative glass-light rounded-3xl p-8 transition-all duration-300 shadow-soft hover:shadow-soft-lg group cursor-default"
-        >
-          <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-secondary/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-          <div className="text-neutral/40 text-xs uppercase tracking-widest mb-5 font-bold">CS Médio</div>
-          <div className="text-5xl font-black text-secondary mb-4 drop-shadow-lg">
-            {(players.reduce((sum, p) => sum + safeNumber(p.avgCS, 0), 0) / players.length).toFixed(0)}
-          </div>
-          <div className="h-2.5 bg-dark-bg/40 rounded-full overflow-hidden shadow-inner">
-            <motion.div 
-              initial={{ width: 0 }}
-              animate={{ width: `${Math.min(100, (players.reduce((sum, p) => sum + safeNumber(p.avgCS, 0), 0) / players.length) / 2.5)}%` }}
-              transition={{ duration: 1, delay: 0.7, ease: "easeOut" }}
-              className="h-full bg-gradient-to-r from-secondary to-secondary-light rounded-full"
-          />
+      <div className="mt-16">
+        {/* Título contextual */}
+        <div className="text-center mb-6">
+          <span className="text-neutral/40 text-sm font-medium uppercase tracking-wider">
+            Medias {selectedRole === 'all' ? 'gerais' : `de ${ROLE_NAMES[selectedRole as Role]}`} ({filteredAndSortedPlayers.length} {filteredAndSortedPlayers.length === 1 ? 'jogador' : 'jogadores'})
+          </span>
         </div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+          className="grid grid-cols-2 md:grid-cols-5 gap-6"
+        >
+          {/* Total Games Card */}
+          <motion.div
+            whileHover={{ y: -4, scale: 1.02 }}
+            className="relative glass-light rounded-3xl p-8 transition-all duration-300 shadow-soft hover:shadow-soft-lg group cursor-default text-center"
+          >
+            <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-primary/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+            <div className="text-neutral/40 text-xs uppercase tracking-widest mb-5 font-bold">Total de Partidas</div>
+            <div className="text-5xl font-black text-neutral drop-shadow-lg">
+              {filteredAndSortedPlayers.reduce((sum, p) => sum + p.totalGames, 0)}
+            </div>
+          </motion.div>
+
+          {/* Win Rate Card */}
+          <motion.div
+            whileHover={{ y: -4, scale: 1.02 }}
+            className="relative glass-light rounded-3xl p-8 transition-all duration-300 shadow-soft hover:shadow-soft-lg group cursor-default text-center"
+          >
+            <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-green-500/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+            <div className="text-neutral/40 text-xs uppercase tracking-widest mb-5 font-bold">Win Rate Medio</div>
+            <div className="text-5xl font-black text-green-400 drop-shadow-lg">
+              {(filteredAndSortedPlayers.reduce((sum, p) => sum + safeNumber(p.winRate, 0), 0) / filteredAndSortedPlayers.length).toFixed(0)}%
+            </div>
+          </motion.div>
+
+          {/* KDA Card */}
+          <motion.div
+            whileHover={{ y: -4, scale: 1.02 }}
+            className="relative glass-light rounded-3xl p-8 transition-all duration-300 shadow-soft hover:shadow-soft-lg group cursor-default text-center"
+          >
+            <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-primary/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+            <div className="text-neutral/40 text-xs uppercase tracking-widest mb-5 font-bold">KDA Medio</div>
+            <div className="text-5xl font-black text-primary drop-shadow-lg">
+              {(filteredAndSortedPlayers.reduce((sum, p) => sum + safeNumber(p.kda, 0), 0) / filteredAndSortedPlayers.length).toFixed(2)}
+            </div>
+          </motion.div>
+
+          {/* CS Average Card */}
+          <motion.div
+            whileHover={{ y: -4, scale: 1.02 }}
+            className="relative glass-light rounded-3xl p-8 transition-all duration-300 shadow-soft hover:shadow-soft-lg group cursor-default text-center"
+          >
+            <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-secondary/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+            <div className="text-neutral/40 text-xs uppercase tracking-widest mb-5 font-bold">CS Medio</div>
+            <div className="text-5xl font-black text-secondary drop-shadow-lg">
+              {(filteredAndSortedPlayers.reduce((sum, p) => sum + safeNumber(p.avgCS, 0), 0) / filteredAndSortedPlayers.length).toFixed(0)}
+            </div>
+          </motion.div>
+
+          {/* Vision Score Card */}
+          <motion.div
+            whileHover={{ y: -4, scale: 1.02 }}
+            className="relative glass-light rounded-3xl p-8 transition-all duration-300 shadow-soft hover:shadow-soft-lg group cursor-default text-center"
+          >
+            <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-purple-500/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+            <div className="text-neutral/40 text-xs uppercase tracking-widest mb-5 font-bold">Visao Media</div>
+            <div className="text-5xl font-black text-purple-400 drop-shadow-lg">
+              {(filteredAndSortedPlayers.reduce((sum, p) => sum + safeNumber(p.avgVisionScore, 0), 0) / filteredAndSortedPlayers.length).toFixed(0)}
+            </div>
+          </motion.div>
         </motion.div>
-      </motion.div>
+      </div>
     </div>
   )
 }

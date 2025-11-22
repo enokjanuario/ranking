@@ -3,7 +3,7 @@ import { Redis } from '@upstash/redis'
 import { RIOT_API_CONFIG, RIOT_API_ENDPOINTS, DDRAGON_VERSION, PLAYER_ROLES } from './constants'
 import { RiotMatchDetails, PlayerStats, ChampionStats } from '@/types'
 import { calculateLPChange, rankToAbsoluteLP } from './lpCalculator'
-import { saveRankSnapshot, getRankSnapshot } from './rankSnapshot'
+import { saveRankSnapshot, getRankSnapshot, getSnapshotKeyForMonth, COMPETITION_START_MONTH } from './rankSnapshot'
 import { scrapeAllPlayerStats, ScrapedPlayerStats } from './scrapers'
 import { trackRequest, getTracker, log } from './requestTracker'
 import { 
@@ -20,6 +20,17 @@ import {
   saveMatchHistoryCache 
 } from './supabase-cache'
 import { isSupabaseConfigured } from './supabase'
+
+// Mapeamento de nomes internos da API para nomes do Data Dragon
+const CHAMPION_NAME_MAP: Record<string, string> = {
+  'FiddleSticks': 'Fiddlesticks',
+  'Wukong': 'MonkeyKing',
+}
+
+// Função para normalizar nome do campeão para URL do Data Dragon
+function normalizeChampionName(name: string): string {
+  return CHAMPION_NAME_MAP[name] || name
+}
 
 const api = axios.create({
   headers: {
@@ -444,10 +455,12 @@ export async function calculatePlayerStats(
           // Para ranking geral (sem startTime), usar mês atual
           const now = startTime ? new Date(startTime) : new Date()
           const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-          let previousRank = await getRankSnapshot(puuid, monthStr)
-          
+          // Usar chave correta: competition_start para novembro, YYYY-MM para outros meses
+          const snapshotKey = getSnapshotKeyForMonth(monthStr)
+          let previousRank = await getRankSnapshot(puuid, snapshotKey)
+
           if (!previousRank && currentRank) {
-            await saveRankSnapshot(puuid, monthStr, currentRank)
+            await saveRankSnapshot(puuid, snapshotKey, currentRank)
             previousRank = currentRank
           }
           
@@ -473,7 +486,7 @@ export async function calculatePlayerStats(
             avgGameDuration: 0, // Scraping geralmente não tem isso
             mostPlayedChampion: scrapedStats.topChampions[0] ? {
               name: scrapedStats.topChampions[0].name,
-              icon: `https://ddragon.leagueoflegends.com/cdn/${DDRAGON_VERSION}/img/champion/${scrapedStats.topChampions[0].name}.png`,
+              icon: `https://ddragon.leagueoflegends.com/cdn/${DDRAGON_VERSION}/img/champion/${normalizeChampionName(scrapedStats.topChampions[0].name)}.png`,
               games: scrapedStats.topChampions[0].games,
             } : {
               name: 'Unknown',
@@ -482,7 +495,7 @@ export async function calculatePlayerStats(
             },
             topChampions: scrapedStats.topChampions.slice(0, 3).map(champ => ({
               name: champ.name,
-              icon: `https://ddragon.leagueoflegends.com/cdn/${DDRAGON_VERSION}/img/champion/${champ.name}.png`,
+              icon: `https://ddragon.leagueoflegends.com/cdn/${DDRAGON_VERSION}/img/champion/${normalizeChampionName(champ.name)}.png`,
               games: champ.games,
             })),
           }
@@ -765,16 +778,18 @@ export async function calculatePlayerStats(
     // Para ranking geral (sem startTime), usar mês atual
     const now = startTime ? new Date(startTime) : new Date()
     const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-    
+    // Usar chave correta: competition_start para novembro, YYYY-MM para outros meses
+    const snapshotKey = getSnapshotKeyForMonth(monthStr)
+
     // Buscar snapshot do início do período (agora async)
-    let previousRank = await getRankSnapshot(puuid, monthStr)
-    
-    // Se não houver snapshot E houver rank atual, precisamos buscar o rank do início do período
-    // Por enquanto, se não houver snapshot, não assumimos o rank atual como baseline
-    // (isso seria incorreto - o snapshot deve ser criado no primeiro dia do mês)
+    let previousRank = await getRankSnapshot(puuid, snapshotKey)
+
+    // Se não houver snapshot E houver rank atual, criar snapshot inicial
+    // Para novembro: snapshot do início do campeonato (24/11 14h)
+    // Para outros meses: snapshot do primeiro dia do mês (00h)
     if (!previousRank && currentRank) {
-      log(`Nenhum snapshot encontrado para ${monthStr}, criando com rank atual (pode ser impreciso)`, '⚠️')
-      await saveRankSnapshot(puuid, monthStr, currentRank)
+      log(`Nenhum snapshot encontrado para ${snapshotKey}, criando com rank atual`, '📸')
+      await saveRankSnapshot(puuid, snapshotKey, currentRank)
       previousRank = currentRank
     }
     
@@ -804,7 +819,7 @@ export async function calculatePlayerStats(
       .slice(0, 3)
       .map(([champName, stats]) => ({
         name: champName,
-        icon: `https://ddragon.leagueoflegends.com/cdn/${DDRAGON_VERSION}/img/champion/${champName}.png`,
+        icon: `https://ddragon.leagueoflegends.com/cdn/${DDRAGON_VERSION}/img/champion/${normalizeChampionName(champName)}.png`,
         games: stats.games,
       }))
 

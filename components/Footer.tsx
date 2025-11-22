@@ -25,15 +25,22 @@ export default function Footer() {
             </span>
           </div>
           
-          <div className="flex items-center gap-4 text-sm">
-            <span className="text-neutral/40 font-medium hover:text-neutral/60 transition-colors cursor-default">
-              Powered by Riot API
-            </span>
-            <span className="text-neutral/20">•</span>
-            <span className="text-neutral/60 font-bold hover:text-gradient-primary transition-all cursor-default">
-              Academia Y
-            </span>
-          </div>
+        <div className="flex items-center gap-4 text-sm">
+      <a
+          href="https://www.linkedin.com/in/enokjrocha"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-neutral/40 font-medium hover:text-neutral/60 transition-colors"
+        >
+          Developed by Enok Rocha
+        </a>
+
+        <span className="text-neutral/20">•</span>
+
+        <span className="text-neutral/60 font-bold hover:text-gradient-primary transition-all cursor-default">
+          Academia Y
+        </span>
+    </div>
         </div>
       </motion.div>
     </footer>

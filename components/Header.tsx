@@ -96,7 +96,7 @@ export default function Header({ lastUpdate, isCached, dataTimestamp, nextUpdate
                   </div>
                 )}
               </div>
-              
+
               {/* Tooltip discreto sobre Auto Refresh */}
               <div className="absolute right-0 bottom-full mb-2 w-48 bg-dark-card/85 text-neutral/70 text-[10px] px-2.5 py-1.5 rounded-md shadow-sm border border-neutral/10 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-50 backdrop-blur-sm">
                 Atualização automática nos horários :00, :15, :30, :45

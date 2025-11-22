@@ -1,6 +1,10 @@
 // Lista dos jogadores a serem trackados
 // Format: "GameName#TagLine"
 export const TRACKED_PLAYERS = [
+  // Academia Y - Yoda
+  'Dorrows#0488',
+  'Atziluth#537',
+  'Gordaker#prata',
   // JG (3 Alunos)
   'Renecrodil0#br1',
   'mago do éter#BR01',
@@ -22,12 +26,17 @@ export const TRACKED_PLAYERS = [
 
 // Mapeamento de RiotIDs para apelidos conhecidos
 export const PLAYER_NICKNAMES: Record<string, string> = {
-  // Adicione apelidos aqui conforme necessário
-  // 'RiotID#TAG': 'Apelido',
+  'Dorrows#0488': 'Dorrows',
+  'Atziluth#537': 'Bronziocre',
+  'Gordaker#prata': 'JBSNIPER',
 }
 
 // Mapeamento de RiotIDs para roles (lanes)
 export const PLAYER_ROLES: Record<string, 'top' | 'jungle' | 'mid' | 'bot' | 'suporte'> = {
+  // Academia Y - Yoda
+  'Dorrows#0488': 'mid',
+  'Atziluth#537': 'mid',
+  'Gordaker#prata': 'mid',
   // JG
   'Renecrodil0#br1': 'jungle',
   'mago do éter#BR01': 'jungle',
@@ -55,7 +64,8 @@ export const RIOT_API_CONFIG = {
 }
 
 // Data Dragon version for champion images
-export const DDRAGON_VERSION = '13.24.1'
+// Atualizar conforme novas patches: https://ddragon.leagueoflegends.com/api/versions.json
+export const DDRAGON_VERSION = '15.1.1'
 
 // API endpoints
 export const RIOT_API_ENDPOINTS = {

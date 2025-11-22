@@ -18,7 +18,8 @@ export default function Home() {
 
   // Verificar se o campeonato já começou
   const COMPETITION_START = new Date('2025-11-24T03:00:00.000Z') // 00:00 BRT
-  const isPaused = new Date() < COMPETITION_START
+  const isDev = process.env.NODE_ENV === 'development'
+  const isPaused = !isDev && new Date() < COMPETITION_START
 
   useEffect(() => {
     // Set November 2025 as default
@@ -48,7 +49,29 @@ export default function Home() {
           timestamp = new Date()
         }
         setDataTimestamp(timestamp)
-        
+
+        // Se os dados estão desatualizados (stale ou mais de 15 min), forçar atualização
+        const dataAge = Date.now() - timestamp.getTime()
+        const isDataStale = data.stale === true || dataAge > 15 * 60 * 1000
+        if (isDataStale && !silent) {
+          // Forçar atualização em background
+          setTimeout(() => {
+            fetch(`/api/ranking?month=${selectedMonth}&force=true`)
+              .then(res => res.json())
+              .then(freshData => {
+                if (freshData.success) {
+                  setPlayers(freshData.players)
+                  setLastUpdate(new Date())
+                  setIsCached(false)
+                  if (freshData.updatedAt) {
+                    setDataTimestamp(new Date(freshData.updatedAt))
+                  }
+                }
+              })
+              .catch(console.error)
+          }, 100)
+        }
+
         // Calcular tempo até próxima atualização (horários terminados em 00, 15, 30, 45)
         const now = new Date()
         const currentMinutes = now.getMinutes()
@@ -178,10 +201,10 @@ export default function Home() {
               Ranking Pausado
             </h1>
             <p className="text-lg md:text-xl text-gray-300 mb-4">
-              O campeonato comeca no dia 24 de novembro de 2025.
+              O campeonato comeca no dia 24 de novembro de 2025 as 00h.
             </p>
             <p className="text-gray-400">
-              O ranking sera atualizado automaticamente a partir da meia-noite desse dia.
+              O ranking sera atualizado automaticamente a partir desse horario.
             </p>
             <div className="mt-8 p-4 bg-dark-bg/50 rounded-lg">
               <p className="text-sm text-gray-500">

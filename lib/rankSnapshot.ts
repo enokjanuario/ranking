@@ -17,8 +17,24 @@ const redis = new Redis({
 
 // Prefixo para chaves Redis
 const SNAPSHOT_KEY_PREFIX = 'ranking:snapshot:'
-// TTL de 90 dias (snapshots devem persistir por vários meses)
-const SNAPSHOT_TTL_SECONDS = 90 * 24 * 60 * 60
+// TTL de 365 dias (snapshots devem persistir durante todo o campeonato)
+const SNAPSHOT_TTL_SECONDS = 365 * 24 * 60 * 60
+
+// Constantes do campeonato
+export const COMPETITION_START = new Date('2025-11-24T03:00:00.000Z') // 00:00 BRT
+export const COMPETITION_START_MONTH = '2025-11'
+
+/**
+ * Retorna a chave de snapshot correta baseada no mês
+ * - Para novembro 2025: usa "competition_start" (baseline é 24/11 14h)
+ * - Para outros meses: usa o início do mês (YYYY-MM)
+ */
+export function getSnapshotKeyForMonth(month: string): string {
+  if (month === COMPETITION_START_MONTH) {
+    return 'competition_start'
+  }
+  return month
+}
 
 /**
  * Gera chave única para snapshot
@@ -146,5 +162,41 @@ export async function clearAllSnapshots(): Promise<void> {
     console.error('❌ Erro ao limpar snapshots:', error)
     throw error
   }
+}
+
+/**
+ * Gera lista de meses disponíveis para o filtro
+ * Começa em novembro 2025 e vai até o mês atual
+ */
+export function getAvailableMonths(): string[] {
+  const months: string[] = []
+  const now = new Date()
+
+  // Começar do mês de início do campeonato
+  let current = new Date(2025, 10, 1) // Novembro 2025
+
+  while (current <= now) {
+    const monthStr = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}`
+    months.push(monthStr)
+    current.setMonth(current.getMonth() + 1)
+  }
+
+  return months
+}
+
+/**
+ * Verifica se precisa criar snapshot para o início de um novo mês
+ * Retorna true se estamos no primeiro dia do mês e não existe snapshot
+ */
+export async function shouldCreateMonthlySnapshot(puuid: string, month: string): Promise<boolean> {
+  // Não criar para novembro (usa competition_start)
+  if (month === COMPETITION_START_MONTH) {
+    return false
+  }
+
+  const key = getSnapshotKey(puuid, month)
+  const existing = await redis.get<RankSnapshot>(key)
+
+  return !existing
 }
 

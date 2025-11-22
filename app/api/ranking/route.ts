@@ -156,7 +156,8 @@ export async function GET(request: NextRequest) {
   try {
     // Pausar atualizações até 24/11/2025 00:00 (horário de Brasília)
     const COMPETITION_START = new Date('2025-11-24T03:00:00.000Z') // 00:00 BRT = 03:00 UTC
-    if (new Date() < COMPETITION_START) {
+    const isDev = process.env.NODE_ENV === 'development'
+    if (!isDev && new Date() < COMPETITION_START) {
       return NextResponse.json({
         success: false,
         error: 'Sistema pausado até 24/11/2025 00:00',
@@ -180,19 +181,25 @@ export async function GET(request: NextRequest) {
     let endTime: number | undefined
     let period: { start: string; end: string }
 
+    // Data mínima para buscar partidas: início do campeonato
+    const MINIMUM_MATCH_DATE = COMPETITION_START.getTime()
+
     if (monthParam) {
       const [year, month] = monthParam.split('-').map(Number)
-      startTime = new Date(year, month - 1, 1).getTime()
+      const monthStart = new Date(year, month - 1, 1).getTime()
+      // Usar o maior entre o início do mês e a data mínima
+      startTime = Math.max(monthStart, MINIMUM_MATCH_DATE)
       endTime = new Date(year, month, 0, 23, 59, 59, 999).getTime()
       period = {
         start: new Date(startTime).toISOString(),
         end: new Date(endTime).toISOString(),
       }
     } else {
-      // Ranking geral: últimos 30 dias
+      // Ranking geral: últimos 30 dias, mas não antes da data mínima
       const thirtyDaysAgo = new Date(Date.now() - (30 * 24 * 60 * 60 * 1000))
+      const effectiveStart = Math.max(thirtyDaysAgo.getTime(), MINIMUM_MATCH_DATE)
       period = {
-        start: thirtyDaysAgo.toISOString(),
+        start: new Date(effectiveStart).toISOString(),
         end: 'current',
       }
     }
