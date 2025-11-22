@@ -1,45 +1,50 @@
 // Lista dos jogadores a serem trackados
 // Format: "GameName#TagLine"
 export const TRACKED_PLAYERS = [
-  // Suas contas principais
-  'Dorrows#0488',
-  'Atziluth#537',
-  'Gordaker#prata',
-  // Novos jogadores
-  'magnum opus#1512',
-  'Bom E Novo#7177',
-  'lopesdadz7#bubux',
-  'Japhie#br1',
-  'DiscipuloDaMorte#br1',
-  'Arkhanos#BR1',
-  // Adicione mais jogadores aqui quando quiser expandir
-  // Exemplos:
-  // 'OutroJogador#BR1',
-  // 'MaisUm#BR1',
+  // JG (3 Alunos)
+  'Renecrodil0#br1',
+  'mago do éter#BR01',
+  'Biscoitao#kick',
+  // ADC (3 Alunos)
+  'DoraVentureira#ta on',
+  'AvrilLavigne#bapho',
+  'Vilão#0805',
+  // TOP (3 Alunos)
+  'shenzin#brabo',
+  'Jubileuevez#BR1',
+  'IROGAMES#br1',
+  // SUP (4 Alunos)
+  'SetFireToTheRain#drunk',
+  'Sythshas#br1',
+  'Audebaram#br1',
+  'CLTThresh#CLT',
 ]
 
 // Mapeamento de RiotIDs para apelidos conhecidos
 export const PLAYER_NICKNAMES: Record<string, string> = {
-  'Atziluth#537': 'Bronziocre',
-  'Gordaker#prata': 'JB Sniper',
-  // Adicione mais apelidos aqui conforme necessário
+  // Adicione apelidos aqui conforme necessário
   // 'RiotID#TAG': 'Apelido',
 }
 
 // Mapeamento de RiotIDs para roles (lanes)
 export const PLAYER_ROLES: Record<string, 'top' | 'jungle' | 'mid' | 'bot' | 'suporte'> = {
-  'Dorrows#0488': 'mid',
-  'Atziluth#537': 'mid',
-  'Gordaker#prata': 'mid',
-  // Novos jogadores
-  'magnum opus#1512': 'top',
-  'Bom E Novo#7177': 'jungle',
-  'lopesdadz7#bubux': 'mid',
-  'Japhie#br1': 'suporte',
-  'DiscipuloDaMorte#br1': 'suporte',
-  'Arkhanos#BR1': 'jungle',
-  // Adicione mais roles aqui conforme necessário
-  // 'RiotID#TAG': 'role',
+  // JG
+  'Renecrodil0#br1': 'jungle',
+  'mago do éter#BR01': 'jungle',
+  'Biscoitao#kick': 'jungle',
+  // ADC
+  'DoraVentureira#ta on': 'bot',
+  'AvrilLavigne#bapho': 'bot',
+  'Vilão#0805': 'bot',
+  // TOP
+  'shenzin#brabo': 'top',
+  'Jubileuevez#BR1': 'top',
+  'IROGAMES#br1': 'top',
+  // SUP
+  'SetFireToTheRain#drunk': 'suporte',
+  'Sythshas#br1': 'suporte',
+  'Audebaram#br1': 'suporte',
+  'CLTThresh#CLT': 'suporte',
 }
 
 // Riot API Configuration

@@ -16,6 +16,10 @@ export default function Home() {
   const [dataTimestamp, setDataTimestamp] = useState<Date | null>(null)
   const [nextUpdateIn, setNextUpdateIn] = useState<number>(0)
 
+  // Verificar se o campeonato já começou
+  const COMPETITION_START = new Date('2025-11-24T03:00:00.000Z') // 00:00 BRT
+  const isPaused = new Date() < COMPETITION_START
+
   useEffect(() => {
     // Set November 2025 as default
     setSelectedMonth('2025-11')
@@ -152,10 +156,49 @@ export default function Home() {
     setSelectedMonth(month)
   }
 
+  // Página de aviso quando o campeonato ainda não começou
+  if (isPaused) {
+    return (
+      <main className="min-h-screen relative overflow-hidden">
+        <div
+          className="fixed inset-0 z-0"
+          style={{
+            backgroundImage: 'url(/background-colorido.png)',
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            backgroundRepeat: 'no-repeat',
+          }}
+        >
+          <div className="absolute inset-0 bg-gradient-to-b from-dark-bg/70 via-dark-bg/75 to-dark-bg/80"></div>
+        </div>
+
+        <div className="container mx-auto px-4 py-6 max-w-[1400px] relative z-10 flex flex-col items-center justify-center min-h-screen">
+          <div className="bg-dark-card/90 backdrop-blur-sm rounded-lg p-8 md:p-12 max-w-2xl text-center border border-gray-700">
+            <h1 className="text-3xl md:text-4xl font-bold text-white mb-6">
+              Ranking Pausado
+            </h1>
+            <p className="text-lg md:text-xl text-gray-300 mb-4">
+              O campeonato comeca no dia 24 de novembro de 2025.
+            </p>
+            <p className="text-gray-400">
+              O ranking sera atualizado automaticamente a partir da meia-noite desse dia.
+            </p>
+            <div className="mt-8 p-4 bg-dark-bg/50 rounded-lg">
+              <p className="text-sm text-gray-500">
+                Data de inicio: 24/11/2025 as 00:00 (horario de Brasilia)
+              </p>
+            </div>
+          </div>
+          <Footer />
+        </div>
+      </main>
+    )
+  }
+
   return (
     <main className="min-h-screen relative overflow-hidden">
       {/* Background colorido da Academia Y */}
-      <div 
+      <div
         className="fixed inset-0 z-0"
         style={{
           backgroundImage: 'url(/background-colorido.png)',
@@ -167,19 +210,19 @@ export default function Home() {
         {/* Overlay para melhorar legibilidade - mais transparente para mostrar o background */}
         <div className="absolute inset-0 bg-gradient-to-b from-dark-bg/70 via-dark-bg/75 to-dark-bg/80"></div>
       </div>
-      
+
       <div className="container mx-auto px-4 py-6 max-w-[1400px] relative z-10">
-        <Header 
+        <Header
           lastUpdate={lastUpdate}
           isCached={isCached}
           dataTimestamp={dataTimestamp}
           nextUpdateIn={nextUpdateIn}
         />
-        
+
         {loading ? (
           <LoadingSpinner />
         ) : (
-          <PlayerTable 
+          <PlayerTable
             players={players}
             selectedMonth={selectedMonth}
             onMonthChange={handleMonthChange}

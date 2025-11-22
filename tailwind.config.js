@@ -9,7 +9,6 @@ module.exports = {
     extend: {
       colors: {
         // Nova paleta YoJornada - Baseada nos valores da academia
-        
         // Primária - SERENIDADE (Azul)
         primary: {
           DEFAULT: '#006aff',
