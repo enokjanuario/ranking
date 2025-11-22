@@ -154,16 +154,8 @@ export async function GET(request: NextRequest) {
   const tracker = startProcess('Ranking API Request')
 
   try {
-    // Pausar atualizações até 24/11/2025 00:00 (horário de Brasília)
+    // Data de início do campeonato (usado para filtrar partidas)
     const COMPETITION_START = new Date('2025-11-24T03:00:00.000Z') // 00:00 BRT = 03:00 UTC
-    const isDev = process.env.NODE_ENV === 'development'
-    if (!isDev && new Date() < COMPETITION_START) {
-      return NextResponse.json({
-        success: false,
-        error: 'Sistema pausado até 24/11/2025 00:00',
-        startDate: COMPETITION_START.toISOString()
-      }, { status: 503 })
-    }
 
     startStep('Validar parâmetros')
     const searchParams = request.nextUrl.searchParams
